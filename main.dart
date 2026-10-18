@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // --- অ্যাডমিন সিকিউরিটি পিন (এখানে আপনার পছন্দমতো পিন দিন) ---
-const String APP_ADMIN_PIN = "1234"; 
+const String APP_ADMIN_PIN = "2486"; 
 
 // অ্যাডমিন মোড ট্র্যাকার
 final ValueNotifier<bool> isAdminNotifier = ValueNotifier<bool>(false);
