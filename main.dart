@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // --- অ্যাডমিন সিকিউরিটি পিন (এখানে আপনার পছন্দমতো পিন দিন) ---
-const String APP_ADMIN_PIN = "2486"; 
+const String APP_ADMIN_PIN = "1234"; 
 
 // অ্যাডমিন মোড ট্র্যাকার
 final ValueNotifier<bool> isAdminNotifier = ValueNotifier<bool>(false);
@@ -220,8 +220,14 @@ class GroupListScreen extends StatelessWidget {
                                 }
                               },
                               itemBuilder: (ctx) => [
-                                PopupMenuItem(value: 'edit', child: Row(children: const [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')])),
-                                PopupMenuItem(value: 'delete', child: Row(children: const [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')]),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')]),
+                                ),
                               ],
                             )
                           : const Icon(Icons.arrow_forward_ios, size: 18),
@@ -377,8 +383,14 @@ class BranchListScreen extends StatelessWidget {
                                 }
                               },
                               itemBuilder: (ctx) => [
-                                PopupMenuItem(value: 'edit', child: Row(children: const [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')])),
-                                PopupMenuItem(value: 'delete', child: Row(children: const [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
+                                const PopupMenuItem(
+                                  value: 'edit',
+                                  child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')]),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')]),
+                                ),
                               ],
                             )
                           : const Icon(Icons.arrow_forward_ios, size: 18),
@@ -489,7 +501,8 @@ class ContactListScreen extends StatelessWidget {
           ElevatedButton(
             onPressed: () {
               if (nameCtrl.text.isNotEmpty && phoneCtrl.text.isNotEmpty) {
-                final data = {
+                // স্পষ্ট টাইপ Map<String, dynamic> দেওয়া হলো যাতে ফিল্ডভ্যালু ত্রুটি না আসে
+                final Map<String, dynamic> data = {
                   'groupId': groupId,
                   'branchId': branchId,
                   'name': nameCtrl.text.trim(),
@@ -603,8 +616,14 @@ class ContactListScreen extends StatelessWidget {
                                               }
                                             },
                                             itemBuilder: (ctx) => [
-                                              PopupMenuItem(value: 'edit', child: Row(children: const [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট')])),
-                                              PopupMenuItem(value: 'delete', child: Row(children: const [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছুন')])),
+                                              const PopupMenuItem(
+                                                value: 'edit',
+                                                child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট')]),
+                                              ),
+                                              const PopupMenuItem(
+                                                value: 'delete',
+                                                child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছুন')]),
+                                              ),
                                             ],
                                           ),
                                       ],
