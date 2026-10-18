@@ -31,65 +31,65 @@ jobs:
           flutter pub add firebase_core cloud_firestore url_launcher
           cp ../main.dart lib/main.dart
           cp ../google-services.json android/app/google-services.json
-          
+
+          # 1. Force minSdk to 23 across all gradle configurations
+          find android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/g' {} +
+          find android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/g' {} +
+          find android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 23/g' {} +
+          find android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i 's/minSdk = 21/minSdk = 23/g' {} +
+          find android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i 's/minSdkVersion 21/minSdkVersion 23/g' {} +
+
+          # 2. Add Google Services Gradle Plugin
           python3 -c '
           import os
 
-          # 1. Update app build.gradle / build.gradle.kts to minSdk 23
-          gradle_file = "android/app/build.gradle.kts" if os.path.exists("android/app/build.gradle.kts") else "android/app/build.gradle"
-          with open(gradle_file, "r") as f:
-              content = f.read()
+          for sf in ["android/settings.gradle", "android/settings.gradle.kts"]:
+              if os.path.exists(sf):
+                  with open(sf, "r") as f:
+                      c = f.read()
+                  if "com.google.gms.google-services" not in c:
+                      if sf.endswith(".kts"):
+                          c = c.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\") version \"4.4.2\" apply false")
+                      else:
+                          c = c.replace("plugins {", "plugins {\n    id \"com.google.gms.google-services\" version \"4.4.2\" apply false")
+                  with open(sf, "w") as f:
+                      f.write(c)
 
-          content = content.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
-          content = content.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+          for bf in ["android/app/build.gradle", "android/app/build.gradle.kts"]:
+              if os.path.exists(bf):
+                  with open(bf, "r") as f:
+                      c = f.read()
+                  if "com.google.gms.google-services" not in c:
+                      if bf.endswith(".kts"):
+                          c = c.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\")")
+                      else:
+                          c += "\napply plugin: \"com.google.gms.google-services\"\n"
+                  with open(bf, "w") as f:
+                      f.write(c)
 
-          if "com.google.gms.google-services" not in content:
-              if gradle_file.endswith(".kts"):
-                  content = content.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\")")
-              else:
-                  content += "\napply plugin: \"com.google.gms.google-services\"\n"
-
-          with open(gradle_file, "w") as f:
-              f.write(content)
-
-          # 2. Update settings.gradle / settings.gradle.kts
-          settings_file = "android/settings.gradle.kts" if os.path.exists("android/settings.gradle.kts") else "android/settings.gradle"
-          with open(settings_file, "r") as f:
-              s_content = f.read()
-
-          if "com.google.gms.google-services" not in s_content:
-              if settings_file.endswith(".kts"):
-                  s_content = s_content.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\") version \"4.4.2\" apply false")
-              else:
-                  s_content = s_content.replace("plugins {", "plugins {\n    id \"com.google.gms.google-services\" version \"4.4.2\" apply false")
-
-          with open(settings_file, "w") as f:
-              f.write(s_content)
-
-          # 3. Update AndroidManifest.xml
-          manifest_file = "android/app/src/main/AndroidManifest.xml"
-          with open(manifest_file, "r") as f:
-              m_content = f.read()
-
-          queries = """
-              <queries>
-                  <intent>
-                      <action android:name="android.intent.action.VIEW" />
-                      <data android:scheme="tel" />
-                  </intent>
-                  <intent>
-                      <action android:name="android.intent.action.VIEW" />
-                      <data android:scheme="sms" />
-                  </intent>
-                  <package android:name="com.whatsapp" />
-              </queries>
-          """
-          if "<queries>" not in m_content:
-              m_content = m_content.replace("</manifest>", queries + "\n</manifest>")
-
-          with open(manifest_file, "w") as f:
-              f.write(m_content)
+          mf = "android/app/src/main/AndroidManifest.xml"
+          if os.path.exists(mf):
+              with open(mf, "r") as f:
+                  c = f.read()
+              queries = """
+                  <queries>
+                      <intent>
+                          <action android:name="android.intent.action.VIEW" />
+                          <data android:scheme="tel" />
+                      </intent>
+                      <intent>
+                          <action android:name="android.intent.action.VIEW" />
+                          <data android:scheme="sms" />
+                      </intent>
+                      <package android:name="com.whatsapp" />
+                  </queries>
+              """
+              if "<queries>" not in c:
+                  c = c.replace("</manifest>", queries + "\n</manifest>")
+              with open(mf, "w") as f:
+                  f.write(c)
           '
+
           flutter build apk --release
 
       - name: Upload Release APK
