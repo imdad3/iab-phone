@@ -32,16 +32,46 @@ jobs:
           cp ../main.dart lib/main.dart
           cp ../google-services.json android/app/google-services.json
           
-          # Setup Firebase Gradle Plugin
-          sed -i 's/id "dev.flutter.flutter-plugin-loader" version "1.0.0"/id "dev.flutter.flutter-plugin-loader" version "1.0.0"\n    id "com.google.gms.google-services" version "4.4.2" apply false/' android/settings.gradle || true
-          echo 'apply plugin: "com.google.gms.google-services"' >> android/app/build.gradle || true
-
-          # AndroidManifest Queries for Call, SMS, WhatsApp
           python3 -c '
-          path = "android/app/src/main/AndroidManifest.xml"
-          with open(path, "r") as f:
-              c = f.read()
-          q = """
+          import os
+
+          # 1. Update app build.gradle / build.gradle.kts to minSdk 23
+          gradle_file = "android/app/build.gradle.kts" if os.path.exists("android/app/build.gradle.kts") else "android/app/build.gradle"
+          with open(gradle_file, "r") as f:
+              content = f.read()
+
+          content = content.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
+          content = content.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+
+          if "com.google.gms.google-services" not in content:
+              if gradle_file.endswith(".kts"):
+                  content = content.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\")")
+              else:
+                  content += "\napply plugin: \"com.google.gms.google-services\"\n"
+
+          with open(gradle_file, "w") as f:
+              f.write(content)
+
+          # 2. Update settings.gradle / settings.gradle.kts
+          settings_file = "android/settings.gradle.kts" if os.path.exists("android/settings.gradle.kts") else "android/settings.gradle"
+          with open(settings_file, "r") as f:
+              s_content = f.read()
+
+          if "com.google.gms.google-services" not in s_content:
+              if settings_file.endswith(".kts"):
+                  s_content = s_content.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\") version \"4.4.2\" apply false")
+              else:
+                  s_content = s_content.replace("plugins {", "plugins {\n    id \"com.google.gms.google-services\" version \"4.4.2\" apply false")
+
+          with open(settings_file, "w") as f:
+              f.write(s_content)
+
+          # 3. Update AndroidManifest.xml
+          manifest_file = "android/app/src/main/AndroidManifest.xml"
+          with open(manifest_file, "r") as f:
+              m_content = f.read()
+
+          queries = """
               <queries>
                   <intent>
                       <action android:name="android.intent.action.VIEW" />
@@ -54,9 +84,11 @@ jobs:
                   <package android:name="com.whatsapp" />
               </queries>
           """
-          c = c.replace("</manifest>", q + "\n</manifest>")
-          with open(path, "w") as f:
-              f.write(c)
+          if "<queries>" not in m_content:
+              m_content = m_content.replace("</manifest>", queries + "\n</manifest>")
+
+          with open(manifest_file, "w") as f:
+              f.write(m_content)
           '
           flutter build apk --release
 
