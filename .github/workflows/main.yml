@@ -75,12 +75,16 @@ jobs:
                   with open(bf, "w") as fl:
                       fl.write(c)
 
-          # ৩. কল, মেসেজ ও হোয়াটসঅ্যাপ পারমিশন কোয়েরি
+          # ৩. অ্যাপের নাম পরিবর্তন এবং পারমিশন যুক্ত করা
           mf = "android/app/src/main/AndroidManifest.xml"
           if os.path.exists(mf):
               with open(mf, "r") as fl:
                   c = fl.read()
-              q = """
+              
+              # অ্যাপের নতুন নাম সেট করা (এখানে আপনার পছন্দমতো নাম দিতে পারেন)
+              c = c.replace("android:label=\"phone\"", "android:label=\"IAB NC\"")
+
+              queries = """
                   <queries>
                       <intent>
                           <action android:name="android.intent.action.VIEW" />
@@ -88,13 +92,13 @@ jobs:
                       </intent>
                       <intent>
                           <action android:name="android.intent.action.VIEW" />
-                          <data android:scheme="sms" />
-                      </intent>
-                      <package android:name="com.whatsapp" />
-                  </queries>
+                      <data android:scheme="sms" />
+                  </intent>
+                  <package android:name="com.whatsapp" />
+              </queries>
               """
               if "<queries>" not in c:
-                  c = c.replace("</manifest>", q + "\n</manifest>")
+                  c = c.replace("</manifest>", queries + "\n</manifest>")
               with open(mf, "w") as fl:
                   fl.write(c)
           '
