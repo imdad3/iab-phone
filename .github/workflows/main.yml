@@ -31,34 +31,74 @@ jobs:
           flutter pub add firebase_core cloud_firestore url_launcher
           cp ../main.dart lib/main.dart
           cp ../google-services.json android/app/google-services.json
-          
-          # Setup Firebase Gradle Plugin
-          sed -i 's/id "dev.flutter.flutter-plugin-loader" version "1.0.0"/id "dev.flutter.flutter-plugin-loader" version "1.0.0"\n    id "com.google.gms.google-services" version "4.4.2" apply false/' android/settings.gradle || true
-          echo 'apply plugin: "com.google.gms.google-services"' >> android/app/build.gradle || true
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' android/app/build.gradle || true
 
-          # AndroidManifest Queries for Call, SMS, WhatsApp
           python3 -c '
-          path = "android/app/src/main/AndroidManifest.xml"
-          with open(path, "r") as f:
-              c = f.read()
-          q = """
-              <queries>
-                  <intent>
-                      <action android:name="android.intent.action.VIEW" />
-                      <data android:scheme="tel" />
-                  </intent>
-                  <intent>
-                      <action android:name="android.intent.action.VIEW" />
-                      <data android:scheme="sms" />
-                  </intent>
-                  <package android:name="com.whatsapp" />
-              </queries>
-          """
-          c = c.replace("</manifest>", q + "\n</manifest>")
-          with open(path, "w") as f:
-              f.write(c)
+          import os
+
+          # ১. সব গ্র্যাডল ফাইলে minSdk জোরপূর্বক ২৩ করা
+          for root, dirs, files in os.walk("android"):
+              for f in files:
+                  if f in ["build.gradle", "build.gradle.kts"]:
+                      p = os.path.join(root, f)
+                      with open(p, "r") as fl:
+                          c = fl.read()
+                      c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
+                      c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion = 23")
+                      c = c.replace("minSdk = 21", "minSdk = 23")
+                      c = c.replace("minSdkVersion 21", "minSdkVersion 23")
+                      with open(p, "w") as fl:
+                          fl.write(c)
+
+          # ২. গুগল সার্ভিস প্লাগইন যুক্ত করা
+          for sf in ["android/settings.gradle", "android/settings.gradle.kts"]:
+              if os.path.exists(sf):
+                  with open(sf, "r") as fl:
+                      c = fl.read()
+                  if "com.google.gms.google-services" not in c:
+                      if sf.endswith(".kts"):
+                          c = c.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\") version \"4.4.2\" apply false")
+                      else:
+                          c = c.replace("plugins {", "plugins {\n    id \"com.google.gms.google-services\" version \"4.4.2\" apply false")
+                  with open(sf, "w") as fl:
+                      fl.write(c)
+
+          for bf in ["android/app/build.gradle", "android/app/build.gradle.kts"]:
+              if os.path.exists(bf):
+                  with open(bf, "r") as fl:
+                      c = fl.read()
+                  if "com.google.gms.google-services" not in c:
+                      if bf.endswith(".kts"):
+                          c = c.replace("plugins {", "plugins {\n    id(\"com.google.gms.google-services\")")
+                      else:
+                          c += "\napply plugin: \"com.google.gms.google-services\"\n"
+                  with open(bf, "w") as fl:
+                      fl.write(c)
+
+          # ৩. কল, মেসেজ ও হোয়াটসঅ্যাপ পারমিশন কোয়েরি
+          mf = "android/app/src/main/AndroidManifest.xml"
+          if os.path.exists(mf):
+              with open(mf, "r") as fl:
+                  c = fl.read()
+              q = """
+                  <queries>
+                      <intent>
+                          <action android:name="android.intent.action.VIEW" />
+                          <data android:scheme="tel" />
+                      </intent>
+                      <intent>
+                          <action android:name="android.intent.action.VIEW" />
+                          <data android:scheme="sms" />
+                      </intent>
+                      <package android:name="com.whatsapp" />
+                  </queries>
+              """
+              if "<queries>" not in c:
+                  c = c.replace("</manifest>", q + "\n</manifest>")
+              with open(mf, "w") as fl:
+                  fl.write(c)
           '
+
           flutter build apk --release
 
       - name: Upload Release APK
