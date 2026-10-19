@@ -1,0 +1,155 @@
+name: Import Contacts from CSV
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Upload Data to Firestore
+        run: |
+          python3 - << 'EOF'
+          import json
+          import csv
+          import urllib.request
+          import urllib.error
+          from datetime import datetime, timezone
+          import os
+
+          # ১. Firebase Project ID নেওয়া
+          if not os.path.exists("google-services.json"):
+              print("ত্রুটি: google-services.json ফাইল পাওয়া যায়নি!")
+              exit(1)
+
+          with open("google-services.json", "r", encoding="utf-8") as f:
+              gs = json.load(f)
+              project_id = gs["project_info"]["project_id"]
+
+          print(f"সংযুক্ত প্রজেক্ট: {project_id}")
+
+          # ২. contacts.csv খোঁজা
+          csv_file = "contacts.csv"
+          if not os.path.exists(csv_file):
+              for root, dirs, files in os.walk("."):
+                  if "contacts.csv" in files:
+                      csv_file = os.path.join(root, "contacts.csv")
+                      break
+
+          if not os.path.exists(csv_file):
+              print("ত্রুটি: contacts.csv ফাইল পাওয়া যায়নি! ফাইলটি আপলোড করা হয়েছে কি না নিশ্চিত করুন।")
+              exit(1)
+
+          print(f"পাওয়া গেছে ফাইল: {csv_file}")
+          base_url = f"https://firestore.googleapis.com/v1/projects/{project_id}/databases/(default)/documents"
+
+          def post_doc(collection, fields):
+              url = f"{base_url}/{collection}"
+              data = json.dumps({"fields": fields}).encode("utf-8")
+              req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      res = json.loads(resp.read().decode("utf-8"))
+                      return res["name"].split("/")[-1]
+              except urllib.error.HTTPError as e:
+                  print(f"Firestore ত্রুটি ({collection}): {e.read().decode('utf-8')}")
+                  raise e
+
+          def get_docs(collection):
+              url = f"{base_url}/{collection}?pageSize=300"
+              req = urllib.request.Request(url)
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      res = json.loads(resp.read().decode("utf-8"))
+                      return res.get("documents", [])
+              except Exception:
+                  return []
+
+          now_iso = datetime.now(timezone.utc).isoformat()
+
+          print("বিদ্যমান গ্রুপ ও শাখা যাচাই করা হচ্ছে...")
+          groups_map = {}
+          for d in get_docs("groups"):
+              fields = d.get("fields", {})
+              name = fields.get("name", {}).get("stringValue")
+              doc_id = d["name"].split("/")[-1]
+              if name:
+                  groups_map[name.strip()] = doc_id
+
+          branches_map = {}
+          for d in get_docs("branches"):
+              fields = d.get("fields", {})
+              b_name = fields.get("name", {}).get("stringValue")
+              g_id = fields.get("groupId", {}).get("stringValue")
+              doc_id = d["name"].split("/")[-1]
+              if b_name and g_id:
+                  branches_map[(g_id, b_name.strip())] = doc_id
+
+          with open(csv_file, mode="r", encoding="utf-8-sig") as f:
+              reader = csv.DictReader(f)
+              rows = list(reader)
+
+          print(f"মোট {len(rows)} টি তথ্য পাওয়া গেছে। আপলোড শুরু হচ্ছে...\n")
+
+          branch_order_counter = {}
+          count = 0
+
+          for row in rows:
+              group_name = (row.get("Group") or row.get("group") or row.get("গ্রুপ") or "").strip()
+              branch_name = (row.get("Branch") or row.get("branch") or row.get("শাখা") or "").strip()
+              name = (row.get("Name") or row.get("name") or row.get("নাম") or "").strip()
+              phone = (row.get("Phone") or row.get("phone") or row.get("মোবাইল") or row.get("নম্বর") or "").strip()
+              address = (row.get("Address") or row.get("address") or row.get("ঠিকানা") or row.get("পদবি") or "").strip()
+
+              if not group_name or not branch_name or not name:
+                  continue
+
+              if group_name not in groups_map:
+                  gid = post_doc("groups", {
+                      "name": {"stringValue": group_name},
+                      "createdAt": {"timestampValue": now_iso}
+                  })
+                  groups_map[group_name] = gid
+                  print(f"[+] নতুন গ্রুপ: {group_name}")
+              else:
+                  gid = groups_map[group_name]
+
+              branch_key = (gid, branch_name)
+              if branch_key not in branches_map:
+                  bid = post_doc("branches", {
+                      "groupId": {"stringValue": gid},
+                      "name": {"stringValue": branch_name},
+                      "createdAt": {"timestampValue": now_iso}
+                  })
+                  branches_map[branch_key] = bid
+                  print(f"  [+] নতুন শাখা: {branch_name}")
+              else:
+                  bid = branches_map[branch_key]
+
+              current_order = branch_order_counter.get(bid, 0)
+              branch_order_counter[bid] = current_order + 1
+
+              post_doc("contacts", {
+                  "groupId": {"stringValue": gid},
+                  "branchId": {"stringValue": bid},
+                  "name": {"stringValue": name},
+                  "phone": {"stringValue": str(phone)},
+                  "address": {"stringValue": address},
+                  "order": {"integerValue": str(current_order)},
+                  "createdAt": {"timestampValue": now_iso}
+              })
+              count += 1
+              print(f"    - সেভ হয়েছে: {name} ({phone})")
+
+          print(f"\n==========================================")
+          print(f"আলহামদুলিল্লাহ! সর্বমোট {count} টি কন্টাক্ট সফলভাবে আপলোড সম্পন্ন হয়েছে।")
+          print(f"==========================================")
+          EOF
