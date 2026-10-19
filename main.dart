@@ -3,21 +3,30 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-// --- অ্যাডমিন সিকিউরিটি পিন (এখানে আপনার পছন্দমতো পিন দিন) ---
+// ==========================================
+// আপনার পছন্দমতো মাস্টার অ্যাডমিন পাসওয়ার্ড
+// ==========================================
 const String APP_ADMIN_PIN = "2486"; 
 
-// অ্যাডমিন মোড ট্র্যাকার
+// অ্যাডমিন মোড ট্র্যাকার (গ্লোবাল স্টেট)
 final ValueNotifier<bool> isAdminNotifier = ValueNotifier<bool>(false);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(const MyApp());
+  
+  // অ্যাপে আগে থেকেই লগইন করা আছে কি না পরীক্ষা করা
+  final prefs = await SharedPreferences.getInstance();
+  final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+
+  runApp(MyApp(isLoggedIn: isLoggedIn));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isLoggedIn;
+  const MyApp({super.key, required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
@@ -28,12 +37,166 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00796B)),
         useMaterial3: true,
       ),
-      home: const GroupListScreen(),
+      // লগইন করা থাকলে সরাসরি গ্রুপ স্ক্রিন, না থাকলে লগইন স্ক্রিন খুলবে
+      home: isLoggedIn ? const GroupListScreen() : const LoginScreen(),
     );
   }
 }
 
-// অ্যাডমিন আনলক/লক ডায়ালগ
+// ================= ০. লগইন / ভেরিফিকেশন স্ক্রিন =================
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _userIdCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _isLoading = false;
+  bool _obscurePin = true;
+
+  Future<void> _handleLogin() async {
+    final userId = _userIdCtrl.text.trim();
+    final password = _passwordCtrl.text.trim();
+
+    if (userId.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ইউজার আইডি এবং পাসওয়ার্ড উভয়ই পূরণ করুন')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      bool isValid = false;
+
+      // ১. মাস্টার অ্যাডমিন হিসেবে লগইন (আইডি: admin, পাসওয়ার্ড: 2486)
+      if (userId.toLowerCase() == "admin" && password == APP_ADMIN_PIN) {
+        isValid = true;
+        isAdminNotifier.value = true;
+      } else {
+        // ২. ক্লাউড ডেটাবেজে সংরক্ষিত সাধারণ ইউজারদের সাথে মিলিয়ে দেখা
+        final query = await FirebaseFirestore.instance
+            .collection('app_users')
+            .where('userId', isEqualTo: userId)
+            .where('password', isEqualTo: password)
+            .limit(1)
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          isValid = true;
+        }
+      }
+
+      if (isValid) {
+        // ফোনে লগইন তথ্য স্থায়ীভাবে সেভ রাখা (যাতে পরবর্তীতে আর পাসওয়ার্ড না চায়)
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('is_logged_in', true);
+        await prefs.setString('logged_user_id', userId);
+
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const GroupListScreen()),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ভুল আইডি বা পাসওয়ার্ড! অ্যাডমিনের সাথে যোগাযোগ করুন।')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ত্রুটি ঘটেছে: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 28.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00796B).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.menu_book_rounded, size: 68, color: Color(0xFF00796B)),
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'IAB Phone Directory',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'অ্যাপে প্রবেশ করতে অ্যাডমিনের দেওয়া আইডি ও পাসওয়ার্ড দিন',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: _userIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'ইউজার আইডি',
+                  prefixIcon: Icon(Icons.person_outline),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _passwordCtrl,
+                obscureText: _obscurePin,
+                decoration: InputDecoration(
+                  labelText: 'পাসওয়ার্ড / কোড',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(_obscurePin ? Icons.visibility_off : Icons.visibility),
+                    onPressed: () => setState(() => _obscurePin = !_obscurePin),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 26),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00796B),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: _isLoading ? null : _handleLogin,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('লগইন করুন', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// অ্যাডমিন আনলক পিন ডায়ালগ
 void showAdminPinDialog(BuildContext context) {
   final pinController = TextEditingController();
   showDialog(
@@ -45,7 +208,7 @@ void showAdminPinDialog(BuildContext context) {
         keyboardType: TextInputType.number,
         obscureText: true,
         decoration: const InputDecoration(
-          labelText: 'গোপন পিন কোড দিন',
+          labelText: 'অ্যাডমিন পিন দিন',
           border: OutlineInputBorder(),
         ),
       ),
@@ -57,11 +220,11 @@ void showAdminPinDialog(BuildContext context) {
               isAdminNotifier.value = true;
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('অ্যাডমিন মোড সক্রিয় হয়েছে! এখন ড্র্যাগ করে সাজাতে ও এডিট করতে পারবেন।')),
+                const SnackBar(content: Text('অ্যাডমিন মোড সক্রিয় হয়েছে!')),
               );
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('ভুল পিন কোড! আবার চেষ্টা করুন।')),
+                const SnackBar(content: Text('ভুল পিন কোড!')),
               );
             }
           },
@@ -72,33 +235,180 @@ void showAdminPinDialog(BuildContext context) {
   );
 }
 
-// অ্যাপবারের জন্য সিকিউরিটি বাটন
+// অ্যাপবারের বাটনসমূহ
 Widget buildAdminLockButton(BuildContext context) {
   return ValueListenableBuilder<bool>(
     valueListenable: isAdminNotifier,
     builder: (context, isAdmin, child) {
-      return IconButton(
-        icon: Icon(
-          isAdmin ? Icons.lock_open : Icons.lock,
-          color: isAdmin ? Colors.amber : null,
-        ),
-        tooltip: isAdmin ? 'অ্যাডমিন মোড বন্ধ করুন' : 'অ্যাডমিন আনলক করুন',
-        onPressed: () {
-          if (isAdmin) {
-            isAdminNotifier.value = false;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('অ্যাডমিন মোড লক করা হয়েছে')),
-            );
-          } else {
-            showAdminPinDialog(context);
-          }
-        },
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isAdmin)
+            IconButton(
+              icon: const Icon(Icons.manage_accounts, color: Colors.amber),
+              tooltip: 'ইউজার তৈরি ও পরিচালনা',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const UserManagementScreen()),
+                );
+              },
+            ),
+          IconButton(
+            icon: Icon(
+              isAdmin ? Icons.lock_open : Icons.lock,
+              color: isAdmin ? Colors.amber : null,
+            ),
+            tooltip: isAdmin ? 'অ্যাডমিন মোড বন্ধ করুন' : 'অ্যাডমিন আনলক করুন',
+            onPressed: () {
+              if (isAdmin) {
+                isAdminNotifier.value = false;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('অ্যাডমিন মোড লক করা হয়েছে')),
+                );
+              } else {
+                showAdminPinDialog(context);
+              }
+            },
+          ),
+        ],
       );
     },
   );
 }
 
-// ================= ১. গ্রুপ স্ক্রিন =================
+// ================= ১. ইউজার ম্যানেজমেন্ট স্ক্রিন (নতুন ইউজার তৈরি) =================
+class UserManagementScreen extends StatelessWidget {
+  const UserManagementScreen({super.key});
+
+  void _showAddUserDialog(BuildContext context, {String? docId, String? name, String? userId, String? password}) {
+    final nameCtrl = TextEditingController(text: name ?? '');
+    final userCtrl = TextEditingController(text: userId ?? '');
+    final passCtrl = TextEditingController(text: password ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(docId == null ? 'নতুন ইউজার যোগ করুন' : 'ইউজারের তথ্য পরিবর্তন'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'ব্যবহারকারীর নাম', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: userCtrl, decoration: const InputDecoration(labelText: 'ইউজার আইডি (যেমন: user1 / মোবাইল নম্বর)', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: passCtrl, decoration: const InputDecoration(labelText: 'পাসওয়ার্ড / কোড', border: OutlineInputBorder())),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
+          ElevatedButton(
+            onPressed: () {
+              if (nameCtrl.text.isNotEmpty && userCtrl.text.isNotEmpty && passCtrl.text.isNotEmpty) {
+                final data = {
+                  'name': nameCtrl.text.trim(),
+                  'userId': userCtrl.text.trim(),
+                  'password': passCtrl.text.trim(),
+                  'updatedAt': FieldValue.serverTimestamp(),
+                };
+                if (docId == null) {
+                  data['createdAt'] = FieldValue.serverTimestamp();
+                  FirebaseFirestore.instance.collection('app_users').add(data);
+                } else {
+                  FirebaseFirestore.instance.collection('app_users').doc(docId).update(data);
+                }
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('সংরক্ষণ করুন'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteUser(BuildContext context, String docId, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('ইউজার বাতিল করবেন?'),
+        content: Text('আপনি কি নিশ্চিত যে "$name"-কে মুছে ফেলতে চান? সে আর এই অ্যাপে লগইন করতে পারবে না।'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('না')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () {
+              FirebaseFirestore.instance.collection('app_users').doc(docId).delete();
+              Navigator.pop(ctx);
+            },
+            child: const Text('মুছুন'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('ইউজারদের তালিকা'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('app_users').orderBy('createdAt', descending: true).snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final docs = snapshot.data!.docs;
+
+          if (docs.isEmpty) {
+            return const Center(child: Text('কোনো সাধারণ ইউজার যুক্ত নেই। নিচে + বাটনে চাপ দিয়ে যোগ করুন।'));
+          }
+
+          return ListView.builder(
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final user = docs[index];
+              final name = user['name'] ?? '';
+              final uId = user['userId'] ?? '';
+              final pass = user['password'] ?? '';
+
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: ListTile(
+                  leading: const CircleAvatar(child: Icon(Icons.person)),
+                  title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('আইডি: $uId  |  পাসওয়ার্ড: $pass'),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (val) {
+                      if (val == 'edit') {
+                        _showAddUserDialog(context, docId: user.id, name: name, userId: uId, password: pass);
+                      } else if (val == 'delete') {
+                        _deleteUser(context, user.id, name);
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট')])),
+                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showAddUserDialog(context),
+        child: const Icon(Icons.person_add),
+      ),
+    );
+  }
+}
+
+// ================= ২. গ্রুপ স্ক্রিন =================
 class GroupListScreen extends StatelessWidget {
   const GroupListScreen({super.key});
 
@@ -187,15 +497,38 @@ class GroupListScreen extends StatelessWidget {
       builder: (context, isAdmin, child) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('ফোন ডিরেক্টরি (গ্রুপসমূহ)'),
+            title: const Text('ফোন ডিরেক্টরি'),
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-            actions: [buildAdminLockButton(context)],
+            actions: [
+              buildAdminLockButton(context),
+              PopupMenuButton<String>(
+                onSelected: (val) async {
+                  if (val == 'logout') {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.clear();
+                    isAdminNotifier.value = false;
+                    if (context.mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (context) => const LoginScreen()),
+                        (route) => false,
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'logout',
+                    child: Row(children: [Icon(Icons.logout, color: Colors.red), SizedBox(width: 8), Text('লগআউট')]),
+                  ),
+                ],
+              ),
+            ],
           ),
           body: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('groups').snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              
               final docs = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
               docs.sort((a, b) {
                 final aData = a.data() as Map<String, dynamic>?;
@@ -232,14 +565,8 @@ class GroupListScreen extends StatelessWidget {
                                 }
                               },
                               itemBuilder: (ctx) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')]),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')]),
-                                ),
+                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')])),
+                                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
                               ],
                             )
                           : const Icon(Icons.arrow_forward_ios, size: 18),
@@ -269,7 +596,7 @@ class GroupListScreen extends StatelessWidget {
   }
 }
 
-// ================= ২. শাখা স্ক্রিন =================
+// ================= ৩. শাখা স্ক্রিন =================
 class BranchListScreen extends StatelessWidget {
   final String groupId;
   final String groupName;
@@ -370,7 +697,6 @@ class BranchListScreen extends StatelessWidget {
             stream: FirebaseFirestore.instance.collection('branches').where('groupId', isEqualTo: groupId).snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              
               final docs = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
               docs.sort((a, b) {
                 final aData = a.data() as Map<String, dynamic>?;
@@ -407,14 +733,8 @@ class BranchListScreen extends StatelessWidget {
                                 }
                               },
                               itemBuilder: (ctx) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')]),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')]),
-                                ),
+                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')])),
+                                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
                               ],
                             )
                           : const Icon(Icons.arrow_forward_ios, size: 18),
@@ -448,7 +768,7 @@ class BranchListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৩. কন্টাক্ট স্ক্রিন (ড্র্যাগ ও ড্রপ সাজানোর সুবিধাসহ) =================
+// ================= ৪. কন্টাক্ট স্ক্রিন (ড্র্যাগ-অ্যান্ড-ড্রপ সাজানোসহ) =================
 class ContactListScreen extends StatelessWidget {
   final String groupId;
   final String branchId;
@@ -499,7 +819,6 @@ class ContactListScreen extends StatelessWidget {
     );
   }
 
-  // ড্র্যাগ করে উপরে নিচে নেওয়ার পর ডেটাবেজে নতুন ক্রম সেভ করা
   Future<void> _onReorder(int oldIndex, int newIndex, List<QueryDocumentSnapshot> docs) async {
     if (oldIndex < newIndex) {
       newIndex -= 1;
@@ -618,7 +937,6 @@ class ContactListScreen extends StatelessWidget {
                   ),
                 ),
                 if (isAdmin) ...[
-                  // ড্র্যাগ করার হ্যান্ডেল
                   ReorderableDragStartListener(
                     index: index,
                     child: const Padding(
@@ -636,14 +954,8 @@ class ContactListScreen extends StatelessWidget {
                       }
                     },
                     itemBuilder: (ctx) => [
-                      const PopupMenuItem(
-                        value: 'edit',
-                        child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট')]),
-                      ),
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছুন')]),
-                      ),
+                      const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট')])),
+                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
                     ],
                   ),
                 ],
@@ -681,8 +993,6 @@ class ContactListScreen extends StatelessWidget {
           stream: FirebaseFirestore.instance.collection('contacts').where('branchId', isEqualTo: branchId).snapshots(),
           builder: (context, snapshot) {
             final docs = List<QueryDocumentSnapshot>.from(snapshot.data?.docs ?? []);
-            
-            // কাস্টম অর্ডার অনুযায়ী সাজানো (না থাকলে তৈরির সময় অনুযায়ী)
             docs.sort((a, b) {
               final aData = a.data() as Map<String, dynamic>?;
               final bData = b.data() as Map<String, dynamic>?;
