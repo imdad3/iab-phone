@@ -11,13 +11,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 const String ORG_NAME = "IAB নারায়ণগঞ্জ মহানগর";
 const String APP_SUBTITLE = "অফিসিয়াল ফোন ডিরেক্টরি";
 
-// এখানে আপনার লোগোর সরাসরি লিংকটি কোটেশনের (" ") ভেতর পেস্ট করুন:
-const String LOGO_IMAGE_URL ="https://i.postimg.cc/fRb0b52y/FB-IMG-1792434797577.jpg"; 
+// আপনার লোগোর সরাসরি লিংক থাকলে এখানে কোটেশনের মধ্যে বসাবেন:
+const String LOGO_IMAGE_URL = "https://i.postimg.cc/fRb0b52y/FB-IMG-1792434797577.jpg"; 
 
 // আপনার মাস্টার অ্যাডমিন পাসওয়ার্ড
 const String APP_ADMIN_PIN = "2486"; 
 
-// অ্যাডমিন স্টেট
+// লগইন করা ইউজারের আইডি ও অ্যাডমিন স্টেট
+String currentUserId = '';
 final ValueNotifier<bool> isAdminNotifier = ValueNotifier<bool>(false);
 
 void main() async {
@@ -26,6 +27,12 @@ void main() async {
   
   final prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
+  currentUserId = prefs.getString('logged_user_id') ?? '';
+  
+  // যদি সরাসরি admin ইউজার হিসেবে সেভ থাকে
+  if (currentUserId.toLowerCase() == "admin") {
+    isAdminNotifier.value = true;
+  }
 
   runApp(MyApp(isLoggedIn: isLoggedIn));
 }
@@ -48,9 +55,33 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// লোগো দেখানোর রিইউজেবল উইজেট
+// অনুমতি যাচাই করার ফাংশন
+bool canUserAccess(Map<String, dynamic> data, bool isAdmin) {
+  // ১. মাস্টার অ্যাডমিন সবসময় সবকিছু দেখতে পাবেন
+  if (isAdmin || currentUserId.toLowerCase() == "admin") {
+    return true;
+  }
+
+  final String accessType = data['accessType'] ?? 'public';
+
+  // ২. যদি শুধু অ্যাডমিনের জন্য হয়
+  if (accessType == 'admin_only') {
+    return false;
+  }
+
+  // ৩. যদি নির্দিষ্ট কিছু ইউজারের জন্য হয়
+  if (accessType == 'custom') {
+    final List<dynamic> allowed = data['allowedUsers'] ?? [];
+    return allowed.contains(currentUserId);
+  }
+
+  // ৪. বাকি সব সবার জন্য উন্মুক্ত (public)
+  return true;
+}
+
+// লোগো উইজেট
 Widget buildAppLogo({double size = 80}) {
-  if (LOGO_IMAGE_URL.startsWith('http')) {
+  if (LOGO_IMAGE_URL.isNotEmpty && LOGO_IMAGE_URL.startsWith('http')) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(size / 2),
       child: Image.network(
@@ -58,20 +89,17 @@ Widget buildAppLogo({double size = 80}) {
         height: size,
         width: size,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => Container(
-          height: size,
-          width: size,
-          decoration: BoxDecoration(
-            color: const Color(0xFF00796B).withOpacity(0.12),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(Icons.account_balance_rounded, size: size * 0.55, color: const Color(0xFF00796B)),
-        ),
+        errorBuilder: (context, error, stackTrace) => _defaultLogoIcon(size),
       ),
     );
   }
+  return _defaultLogoIcon(size);
+}
+
+Widget _defaultLogoIcon(double size) {
   return Container(
-    padding: EdgeInsets.all(size * 0.2),
+    height: size,
+    width: size,
     decoration: BoxDecoration(
       color: const Color(0xFF00796B).withOpacity(0.12),
       shape: BoxShape.circle,
@@ -80,7 +108,7 @@ Widget buildAppLogo({double size = 80}) {
   );
 }
 
-// ================= ০. লগইন / ভেরিফিকেশন স্ক্রিন =================
+// ================= ০. লগইন স্ক্রিন =================
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -110,12 +138,10 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       bool isValid = false;
 
-      // মাস্টার অ্যাডমিন লগইন (admin / 2486)
       if (userId.toLowerCase() == "admin" && password == APP_ADMIN_PIN) {
         isValid = true;
         isAdminNotifier.value = true;
       } else {
-        // ফায়ারস্টোর ইউজার যাচাই
         final query = await FirebaseFirestore.instance
             .collection('app_users')
             .where('userId', isEqualTo: userId)
@@ -129,6 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (isValid) {
+        currentUserId = userId;
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('is_logged_in', true);
         await prefs.setString('logged_user_id', userId);
@@ -231,7 +258,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// অ্যাডমিন আনলক পিন ডায়ালগ
+// অ্যাডমিন পিন ডায়ালগ
 void showAdminPinDialog(BuildContext context) {
   final pinController = TextEditingController();
   showDialog(
@@ -270,7 +297,7 @@ void showAdminPinDialog(BuildContext context) {
   );
 }
 
-// অ্যাপবারের বাটনসমূহ
+// হেডারবারের অ্যাডমিন বাটন
 Widget buildAdminLockButton(BuildContext context) {
   return ValueListenableBuilder<bool>(
     valueListenable: isAdminNotifier,
@@ -331,7 +358,7 @@ class UserManagementScreen extends StatelessWidget {
             children: [
               TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'ব্যবহারকারীর নাম', border: OutlineInputBorder())),
               const SizedBox(height: 10),
-              TextField(controller: userCtrl, decoration: const InputDecoration(labelText: 'ইউজার আইডি (যেমন: user1 / মোবাইল নম্বর)', border: OutlineInputBorder())),
+              TextField(controller: userCtrl, decoration: const InputDecoration(labelText: 'ইউজার আইডি (যেমন: user1 / ফোন নম্বর)', border: OutlineInputBorder())),
               const SizedBox(height: 10),
               TextField(controller: passCtrl, decoration: const InputDecoration(labelText: 'পাসওয়ার্ড / কোড', border: OutlineInputBorder())),
             ],
@@ -369,7 +396,7 @@ class UserManagementScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('ইউজার বাতিল করবেন?'),
-        content: Text('আপনি কি নিশ্চিত যে "$name"-কে মুছে ফেলতে চান? সে আর এই অ্যাপে ঢুকতে পারবে না।'),
+        content: Text('আপনি কি নিশ্চিত যে "$name"-কে মুছে ফেলতে চান? সে আর লগইন করতে পারবে না।'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('না')),
           ElevatedButton(
@@ -399,7 +426,7 @@ class UserManagementScreen extends StatelessWidget {
           final docs = snapshot.data!.docs;
 
           if (docs.isEmpty) {
-            return const Center(child: Text('কোনো সাধারণ ইউজার যুক্ত নেই। নিচে + বাটনে চাপ দিয়ে যোগ করুন।'));
+            return const Center(child: Text('কোনো সাধারণ ইউজার নেই। নিচে + বাটনে যোগ করুন।'));
           }
 
           return ListView.builder(
@@ -443,63 +470,65 @@ class UserManagementScreen extends StatelessWidget {
   }
 }
 
-// ================= ২. গ্রুপ স্ক্রিন =================
+// ================= ২. গ্রুপ স্ক্রিন (গোপনীয়তাসহ) =================
 class GroupListScreen extends StatelessWidget {
   const GroupListScreen({super.key});
 
-  void _showAddGroupDialog(BuildContext context) {
-    final groupController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('নতুন গ্রুপ তৈরি করুন'),
-        content: TextField(
-          controller: groupController,
-          decoration: const InputDecoration(labelText: 'গ্রুপের নাম', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
-          ElevatedButton(
-            onPressed: () {
-              if (groupController.text.trim().isNotEmpty) {
-                FirebaseFirestore.instance.collection('groups').add({
-                  'name': groupController.text.trim(),
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('তৈরি করুন'),
-          ),
-        ],
-      ),
-    );
-  }
+  void _showGroupDialog(BuildContext context, {String? docId, String? currentName, String? currentAccessType}) {
+    final groupController = TextEditingController(text: currentName ?? '');
+    String selectedAccess = currentAccessType ?? 'public';
 
-  void _showEditGroupDialog(BuildContext context, String docId, String currentName) {
-    final groupController = TextEditingController(text: currentName);
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('গ্রুপের নাম পরিবর্তন'),
-        content: TextField(
-          controller: groupController,
-          decoration: const InputDecoration(labelText: 'নতুন নাম', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
-          ElevatedButton(
-            onPressed: () {
-              if (groupController.text.trim().isNotEmpty) {
-                FirebaseFirestore.instance.collection('groups').doc(docId).update({
-                  'name': groupController.text.trim(),
-                });
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('আপডেট'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(docId == null ? 'নতুন গ্রুপ তৈরি' : 'গ্রুপ এডিট করুন'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: groupController,
+                decoration: const InputDecoration(labelText: 'গ্রুপের নাম', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 16),
+              const Text('এই গ্রুপটি কে দেখতে পাবে?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              RadioListTile<String>(
+                title: const Text('সবার জন্য উন্মুক্ত (সবাই দেখবে)'),
+                value: 'public',
+                groupValue: selectedAccess,
+                onChanged: (val) => setDialogState(() => selectedAccess = val!),
+              ),
+              RadioListTile<String>(
+                title: const Text('শুধুমাত্র অ্যাডমিন (গোপন গ্রুপ)'),
+                value: 'admin_only',
+                groupValue: selectedAccess,
+                onChanged: (val) => setDialogState(() => selectedAccess = val!),
+              ),
+            ],
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
+            ElevatedButton(
+              onPressed: () {
+                if (groupController.text.trim().isNotEmpty) {
+                  final data = {
+                    'name': groupController.text.trim(),
+                    'accessType': selectedAccess,
+                  };
+                  if (docId == null) {
+                    data['createdAt'] = FieldValue.serverTimestamp();
+                    FirebaseFirestore.instance.collection('groups').add(data);
+                  } else {
+                    FirebaseFirestore.instance.collection('groups').doc(docId).update(data);
+                  }
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text('সংরক্ষণ'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -551,6 +580,7 @@ class GroupListScreen extends StatelessWidget {
                   if (val == 'logout') {
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.clear();
+                    currentUserId = '';
                     isAdminNotifier.value = false;
                     if (context.mounted) {
                       Navigator.pushAndRemoveUntil(
@@ -574,7 +604,13 @@ class GroupListScreen extends StatelessWidget {
             stream: FirebaseFirestore.instance.collection('groups').snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              final docs = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
+              
+              // সিকিউরিটি ফিল্টারিং
+              final docs = snapshot.data!.docs.where((d) {
+                final data = d.data() as Map<String, dynamic>;
+                return canUserAccess(data, isAdmin);
+              }).toList();
+
               docs.sort((a, b) {
                 final aData = a.data() as Map<String, dynamic>?;
                 final bData = b.data() as Map<String, dynamic>?;
@@ -587,30 +623,48 @@ class GroupListScreen extends StatelessWidget {
               });
 
               if (docs.isEmpty) {
-                return const Center(child: Text('কোনো গ্রুপ নেই।'));
+                return const Center(child: Text('কোনো দৃশ্যমান গ্রুপ নেই।'));
               }
+
               return ListView.builder(
                 itemCount: docs.length,
                 itemBuilder: (context, index) {
                   final group = docs[index];
-                  final groupName = group['name'] ?? '';
+                  final groupData = group.data() as Map<String, dynamic>;
+                  final groupName = groupData['name'] ?? '';
+                  final accessType = groupData['accessType'] ?? 'public';
+                  final bool isSecret = (accessType == 'admin_only');
+
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.folder)),
-                      title: Text(groupName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      leading: CircleAvatar(
+                        backgroundColor: isSecret ? Colors.amber.shade100 : null,
+                        child: Icon(isSecret ? Icons.lock : Icons.folder, color: isSecret ? Colors.amber.shade900 : null),
+                      ),
+                      title: Row(
+                        children: [
+                          Expanded(child: Text(groupName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                          if (isSecret && isAdmin)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4), border: Border.Border.all(color: Colors.red.shade200)),
+                              child: const Text('🔒 শুধু অ্যাডমিন', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+                            ),
+                        ],
+                      ),
                       trailing: isAdmin
                           ? PopupMenuButton<String>(
                               icon: const Icon(Icons.more_vert),
                               onSelected: (val) {
                                 if (val == 'edit') {
-                                  _showEditGroupDialog(context, group.id, groupName);
+                                  _showGroupDialog(context, docId: group.id, currentName: groupName, currentAccessType: accessType);
                                 } else if (val == 'delete') {
                                   _confirmDelete(context, group.id, groupName);
                                 }
                               },
                               itemBuilder: (ctx) => [
-                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')])),
+                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট / অনুমতি')])),
                                 const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
                               ],
                             )
@@ -631,7 +685,7 @@ class GroupListScreen extends StatelessWidget {
           ),
           floatingActionButton: isAdmin
               ? FloatingActionButton(
-                  onPressed: () => _showAddGroupDialog(context),
+                  onPressed: () => _showGroupDialog(context),
                   child: const Icon(Icons.add),
                 )
               : null,
@@ -641,67 +695,115 @@ class GroupListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৩. শাখা স্ক্রিন =================
+// ================= ৩. শাখা স্ক্রিন (ইউজার ভিত্তিক গোপনীয়তাসহ) =================
 class BranchListScreen extends StatelessWidget {
   final String groupId;
   final String groupName;
 
   const BranchListScreen({super.key, required this.groupId, required this.groupName});
 
-  void _showAddBranchDialog(BuildContext context) {
-    final branchController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('নতুন শাখা তৈরি করুন'),
-        content: TextField(
-          controller: branchController,
-          decoration: const InputDecoration(labelText: 'শাখার নাম', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
-          ElevatedButton(
-            onPressed: () {
-              if (branchController.text.trim().isNotEmpty) {
-                FirebaseFirestore.instance.collection('branches').add({
-                  'groupId': groupId,
-                  'name': branchController.text.trim(),
-                  'createdAt': FieldValue.serverTimestamp(),
-                });
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('তৈরি করুন'),
-          ),
-        ],
-      ),
-    );
-  }
+  Future<void> _showBranchDialog(BuildContext context, {String? docId, String? currentName, String? currentAccess, List<dynamic>? currentAllowed}) async {
+    final branchController = TextEditingController(text: currentName ?? '');
+    String selectedAccess = currentAccess ?? 'public';
+    List<String> allowedUsers = List<String>.from(currentAllowed ?? []);
 
-  void _showEditBranchDialog(BuildContext context, String docId, String currentName) {
-    final branchController = TextEditingController(text: currentName);
+    // সমস্ত রেজিস্ট্রার্ড ইউজারের তালিকা ফায়ারবেস থেকে লোড করা
+    final userDocs = (await FirebaseFirestore.instance.collection('app_users').get()).docs;
+
+    if (!context.mounted) return;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('শাখার নাম পরিবর্তন'),
-        content: TextField(
-          controller: branchController,
-          decoration: const InputDecoration(labelText: 'নতুন নাম', border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
-          ElevatedButton(
-            onPressed: () {
-              if (branchController.text.trim().isNotEmpty) {
-                FirebaseFirestore.instance.collection('branches').doc(docId).update({
-                  'name': branchController.text.trim(),
-                });
-                Navigator.pop(ctx);
-              }
-            },
-            child: const Text('আপডেট'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(docId == null ? 'নতুন শাখা তৈরি' : 'শাখা এডিট ও অনুমতি'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: branchController,
+                  decoration: const InputDecoration(labelText: 'শাখার নাম', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 16),
+                const Text('কে কে এই শাখাটি দেখতে পাবে?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                RadioListTile<String>(
+                  title: const Text('সবার জন্য উন্মুক্ত'),
+                  value: 'public',
+                  groupValue: selectedAccess,
+                  onChanged: (val) => setDialogState(() => selectedAccess = val!),
+                ),
+                RadioListTile<String>(
+                  title: const Text('শুধুমাত্র অ্যাডমিন (গোপন)'),
+                  value: 'admin_only',
+                  groupValue: selectedAccess,
+                  onChanged: (val) => setDialogState(() => selectedAccess = val!),
+                ),
+                RadioListTile<String>(
+                  title: const Text('নির্দিষ্ট কিছু ইউজার'),
+                  value: 'custom',
+                  groupValue: selectedAccess,
+                  onChanged: (val) => setDialogState(() => selectedAccess = val!),
+                ),
+                if (selectedAccess == 'custom') ...[
+                  const Divider(),
+                  const Text('ইউজারদের নির্বাচন করুন:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
+                  if (userDocs.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Text('কোনো সাধারণ ইউজার তৈরি করা নেই! আগে ইউজার তৈরি করুন।', style: TextStyle(color: Colors.red, fontSize: 12)),
+                    )
+                  else
+                    ...userDocs.map((u) {
+                      final uData = u.data();
+                      final uId = uData['userId'] ?? '';
+                      final uName = uData['name'] ?? '';
+                      final isChecked = allowedUsers.contains(uId);
+
+                      return CheckboxListTile(
+                        dense: true,
+                        title: Text('$uName ($uId)'),
+                        value: isChecked,
+                        onChanged: (bool? val) {
+                          setDialogState(() {
+                            if (val == true) {
+                              allowedUsers.add(uId);
+                            } else {
+                              allowedUsers.remove(uId);
+                            }
+                          });
+                        },
+                      );
+                    }),
+                ],
+              ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
+            ElevatedButton(
+              onPressed: () {
+                if (branchController.text.trim().isNotEmpty) {
+                  final data = {
+                    'groupId': groupId,
+                    'name': branchController.text.trim(),
+                    'accessType': selectedAccess,
+                    'allowedUsers': allowedUsers,
+                  };
+                  if (docId == null) {
+                    data['createdAt'] = FieldValue.serverTimestamp();
+                    FirebaseFirestore.instance.collection('branches').add(data);
+                  } else {
+                    FirebaseFirestore.instance.collection('branches').doc(docId).update(data);
+                  }
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text('সংরক্ষণ'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -742,7 +844,13 @@ class BranchListScreen extends StatelessWidget {
             stream: FirebaseFirestore.instance.collection('branches').where('groupId', isEqualTo: groupId).snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              final docs = List<QueryDocumentSnapshot>.from(snapshot.data!.docs);
+              
+              // সিকিউরিটি ফিল্টারিং
+              final docs = snapshot.data!.docs.where((d) {
+                final data = d.data() as Map<String, dynamic>;
+                return canUserAccess(data, isAdmin);
+              }).toList();
+
               docs.sort((a, b) {
                 final aData = a.data() as Map<String, dynamic>?;
                 final bData = b.data() as Map<String, dynamic>?;
@@ -755,30 +863,53 @@ class BranchListScreen extends StatelessWidget {
               });
 
               if (docs.isEmpty) {
-                return const Center(child: Text('এই গ্রুপে কোনো শাখা নেই।'));
+                return const Center(child: Text('এই গ্রুপে কোনো দৃশ্যমান শাখা নেই।'));
               }
+
               return ListView.builder(
                 itemCount: docs.length,
                 itemBuilder: (context, index) {
                   final branch = docs[index];
-                  final branchName = branch['name'] ?? '';
+                  final branchData = branch.data() as Map<String, dynamic>;
+                  final branchName = branchData['name'] ?? '';
+                  final accessType = branchData['accessType'] ?? 'public';
+                  final allowed = branchData['allowedUsers'] as List<dynamic>? ?? [];
+
+                  final bool isRestricted = (accessType != 'public');
+
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     child: ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.apartment)),
-                      title: Text(branchName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      leading: CircleAvatar(
+                        backgroundColor: isRestricted ? Colors.orange.shade100 : null,
+                        child: Icon(isRestricted ? Icons.lock : Icons.apartment, color: isRestricted ? Colors.orange.shade900 : null),
+                      ),
+                      title: Row(
+                        children: [
+                          Expanded(child: Text(branchName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                          if (isRestricted && isAdmin)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(4), border: Border.Border.all(color: Colors.amber.shade400)),
+                              child: Text(
+                                accessType == 'admin_only' ? '🔒 শুধু অ্যাডমিন' : '👥 ${allowed.length} জন ইউজার',
+                                style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                        ],
+                      ),
                       trailing: isAdmin
                           ? PopupMenuButton<String>(
                               icon: const Icon(Icons.more_vert),
                               onSelected: (val) {
                                 if (val == 'edit') {
-                                  _showEditBranchDialog(context, branch.id, branchName);
+                                  _showBranchDialog(context, docId: branch.id, currentName: branchName, currentAccess: accessType, currentAllowed: allowed);
                                 } else if (val == 'delete') {
                                   _confirmDeleteBranch(context, branch.id, branchName);
                                 }
                               },
                               itemBuilder: (ctx) => [
-                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('নাম পরিবর্তন')])),
+                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট / অনুমতি')])),
                                 const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
                               ],
                             )
@@ -803,7 +934,7 @@ class BranchListScreen extends StatelessWidget {
           ),
           floatingActionButton: isAdmin
               ? FloatingActionButton(
-                  onPressed: () => _showAddBranchDialog(context),
+                  onPressed: () => _showBranchDialog(context),
                   child: const Icon(Icons.add),
                 )
               : null,
@@ -813,7 +944,7 @@ class BranchListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৪. কন্টাক্ট স্ক্রিন (কল, এসএমএস, ড্র্যাগ-সাজানো) =================
+// ================= ৪. কন্টাক্ট স্ক্রিন =================
 class ContactListScreen extends StatelessWidget {
   final String groupId;
   final String branchId;
