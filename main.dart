@@ -428,7 +428,7 @@ class UserManagementScreen extends StatelessWidget {
                 child: ListTile(
                   leading: const CircleAvatar(child: Icon(Icons.person)),
                   title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('আইডি: $uId  \vert{}  পাসওয়ার্ড: $pass'),
+                  subtitle: Text('আইডি: $uId  |  পাসওয়ার্ড: $pass'),
                   trailing: PopupMenuButton<String>(
                     onSelected: (val) {
                       if (val == 'edit') {
@@ -634,7 +634,7 @@ class GroupListScreen extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.shade200)),
-                              child: const Text('🔒 শুধু অ্যাডমিন', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
+                              child: const Text('শুধু অ্যাডমিন', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
                             ),
                         ],
                       ),
@@ -876,4 +876,474 @@ class BranchListScreen extends StatelessWidget {
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.amber.shade400)),
                               child: Text(
-                                accessType == 'admin_only' ? '🔒
+                                accessType == 'admin_only' ? 'শুধু অ্যাডমিন' : '${allowed.length} জন ইউজার',
+                                style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                        ],
+                      ),
+                      trailing: isAdmin
+                          ? PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert),
+                              onSelected: (val) {
+                                if (val == 'edit') {
+                                  _showBranchDialog(context, docId: branch.id, currentName: branchName, currentAccess: accessType, currentAllowed: allowed);
+                                } else if (val == 'delete') {
+                                  _confirmDeleteBranch(context, branch.id, branchName);
+                                }
+                              },
+                              itemBuilder: (ctx) => [
+                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট / অনুমতি')])),
+                                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
+                              ],
+                            )
+                          : const Icon(Icons.arrow_forward_ios, size: 18),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ContactListScreen(
+                              groupId: groupId,
+                              branchId: branch.id,
+                              branchName: branchName,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          floatingActionButton: isAdmin
+              ? FloatingActionButton(
+                  onPressed: () => _showBranchDialog(context),
+                  child: const Icon(Icons.add),
+                )
+              : null,
+        );
+      },
+    );
+  }
+}
+
+// ================= ৪. কন্টাক্ট স্ক্রিন (স্মার্ট বাল্ক ইমপোর্টসহ) =================
+class ContactListScreen extends StatelessWidget {
+  final String groupId;
+  final String branchId;
+  final String branchName;
+
+  const ContactListScreen({
+    super.key,
+    required this.groupId,
+    required this.branchId,
+    required this.branchName,
+  });
+
+  Future<void> _makeCall(String phone) async {
+    final Uri uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Future<void> _sendSMS(String phone) async {
+    final Uri uri = Uri(scheme: 'sms', path: phone);
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Future<void> _openWhatsApp(String phone, BuildContext context) async {
+    String cleanNumber = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (cleanNumber.startsWith('0')) {
+      cleanNumber = '88$cleanNumber';
+    } else if (!cleanNumber.startsWith('88')) {
+      cleanNumber = '880$cleanNumber';
+    }
+    final Uri uri = Uri.parse("https://wa.me/$cleanNumber");
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('হোয়াটসঅ্যাপ খোলা সম্ভব হয়নি')),
+        );
+      }
+    }
+  }
+
+  void _copyAllNumbers(List<QueryDocumentSnapshot> docs, BuildContext context) {
+    if (docs.isEmpty) return;
+    final numbers = docs.map((doc) => (doc['phone'] ?? '').toString()).where((p) => p.isNotEmpty).toList();
+    Clipboard.setData(ClipboardData(text: numbers.join(', ')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${numbers.length}টি নম্বর একসাথে কপি করা হয়েছে!')),
+    );
+  }
+
+  // ================= সুপার স্মার্ট বাল্ক ইমপোর্ট (Regex ভিত্তিক) =================
+  void _showBulkImportDialog(BuildContext context) {
+    final textCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.playlist_add_check, color: Color(0xFF00796B)),
+            SizedBox(width: 8),
+            Text('একসাথে অনেক সদস্য যোগ'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'ওয়ার্ড, এক্সেল বা টেক্সট ফাইল থেকে সরাসরি কপি করে নিচের বক্সে পেস্ট করুন। নাম, নম্বর ও পদবী স্বয়ংক্রিয়ভাবে আলাদা হয়ে যাবে:',
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textCtrl,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                  hintText: 'এখানে পেস্ট করুন...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00796B),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final rawText = textCtrl.text.trim();
+              if (rawText.isEmpty) return;
+
+              Navigator.pop(ctx);
+
+              final lines = rawText.split(RegExp(r'\r?\n'));
+              int currentTotal = (await FirebaseFirestore.instance
+                      .collection('contacts')
+                      .where('branchId', isEqualTo: branchId)
+                      .get())
+                  .docs
+                  .length;
+
+              WriteBatch batch = FirebaseFirestore.instance.batch();
+              int addedCount = 0;
+              int batchCount = 0;
+
+              final phoneRegex = RegExp(r'(?:(?:\+|00)?88)?(01[3-9]\d{8})');
+
+              for (var line in lines) {
+                line = line.trim();
+                if (line.isEmpty) continue;
+
+                String name = '';
+                String phone = '';
+                String address = '';
+
+                final match = phoneRegex.firstMatch(line);
+
+                if (match != null) {
+                  phone = match.group(1) ?? match.group(0)!;
+                  name = line.substring(0, match.start).trim();
+                  name = name.replaceAll(RegExp(r'^[০-৯0-9\.\-\)\s]+'), '').trim();
+                  address = line.substring(match.end).trim();
+                  address = address.replaceAll(RegExp(r'^[\s\:\-\,\t]+'), '').trim();
+                } else {
+                  List<String> parts = line.split(RegExp(r'[\t,;|]'));
+                  name = parts.isNotEmpty ? parts[0].trim() : '';
+                  phone = parts.length > 1 ? parts[1].trim() : '';
+                  address = parts.length > 2 ? parts.sublist(2).join(', ').trim() : '';
+                }
+
+                if (name.toLowerCase() == 'নাম' || name.toLowerCase() == 'name') continue;
+                if (name.isEmpty && phone.isEmpty) continue;
+
+                final docRef = FirebaseFirestore.instance.collection('contacts').doc();
+                batch.set(docRef, {
+                  'groupId': groupId,
+                  'branchId': branchId,
+                  'name': name,
+                  'phone': phone,
+                  'address': address,
+                  'order': currentTotal + addedCount,
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+
+                addedCount++;
+                batchCount++;
+
+                if (batchCount >= 400) {
+                  await batch.commit();
+                  batch = FirebaseFirestore.instance.batch();
+                  batchCount = 0;
+                }
+              }
+
+              if (batchCount > 0) {
+                await batch.commit();
+              }
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('সফলভাবে $addedCount জন সদস্যের তথ্য যুক্ত হয়েছে!')),
+                );
+              }
+            },
+            child: const Text('ইমপোর্ট করুন'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _onReorder(int oldIndex, int newIndex, List<QueryDocumentSnapshot> docs) async {
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final item = docs.removeAt(oldIndex);
+    docs.insert(newIndex, item);
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (int i = 0; i < docs.length; i++) {
+      batch.update(docs[i].reference, {'order': i});
+    }
+    await batch.commit();
+  }
+
+  void _showContactDialog(BuildContext context, {String? docId, String? name, String? phone, String? address, int? currentCount}) {
+    final nameCtrl = TextEditingController(text: name ?? '');
+    final phoneCtrl = TextEditingController(text: phone ?? '');
+    final addressCtrl = TextEditingController(text: address ?? '');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(docId == null ? 'নতুন ব্যক্তি যোগ করুন' : 'তথ্য পরিবর্তন করুন'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'নাম', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'মোবাইল নম্বর', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: addressCtrl, decoration: const InputDecoration(labelText: 'ঠিকানা/পদবি', border: OutlineInputBorder())),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
+          ElevatedButton(
+            onPressed: () {
+              if (nameCtrl.text.isNotEmpty && phoneCtrl.text.isNotEmpty) {
+                final Map<String, dynamic> data = {
+                  'groupId': groupId,
+                  'branchId': branchId,
+                  'name': nameCtrl.text.trim(),
+                  'phone': phoneCtrl.text.trim(),
+                  'address': addressCtrl.text.trim(),
+                };
+                if (docId == null) {
+                  data['createdAt'] = FieldValue.serverTimestamp();
+                  data['order'] = currentCount ?? 0;
+                  FirebaseFirestore.instance.collection('contacts').add(data);
+                } else {
+                  FirebaseFirestore.instance.collection('contacts').doc(docId).update(data);
+                }
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('সংরক্ষণ করুন'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteContact(BuildContext context, String docId, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('নম্বরটি মুছে ফেলবেন?'),
+        content: Text('আপনি কি নিশ্চিত যে "$name"-এর নম্বর মুছে ফেলতে চান?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('না')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () {
+              FirebaseFirestore.instance.collection('contacts').doc(docId).delete();
+              Navigator.pop(ctx);
+            },
+            child: const Text('হ্যাঁ, মুছুন'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactCard(BuildContext context, QueryDocumentSnapshot contact, int index, bool isAdmin) {
+    final name = contact['name'] ?? '';
+    final phone = contact['phone'] ?? '';
+    final address = contact['address'] ?? '';
+
+    return Card(
+      key: ValueKey(contact.id),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text(phone, style: const TextStyle(color: Colors.black87, fontSize: 14)),
+                      if (address.isNotEmpty)
+                        Text(address, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                if (isAdmin) ...[
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Icon(Icons.drag_handle, color: Colors.blueGrey, size: 26),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (val) {
+                      if (val == 'edit') {
+                        _showContactDialog(context, docId: contact.id, name: name, phone: phone, address: address);
+                      } else if (val == 'delete') {
+                        _confirmDeleteContact(context, contact.id, name);
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট')])),
+                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছুন')])),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+            const Divider(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                IconButton(icon: const Icon(Icons.phone, color: Colors.green), tooltip: 'কল', onPressed: () => _makeCall(phone)),
+                IconButton(icon: const Icon(Icons.message, color: Colors.blue), tooltip: 'মেসেজ', onPressed: () => _sendSMS(phone)),
+                IconButton(icon: const Icon(Icons.chat, color: Color(0xFF25D366)), tooltip: 'হোয়াটসঅ্যাপ', onPressed: () => _openWhatsApp(phone, context)),
+                IconButton(
+                  icon: const Icon(Icons.copy, color: Colors.grey),
+                  tooltip: 'কপি',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: phone));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$phone কপি হয়েছে')));
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: isAdminNotifier,
+      builder: (context, isAdmin, child) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('contacts').where('branchId', isEqualTo: branchId).snapshots(),
+          builder: (context, snapshot) {
+            final docs = List<QueryDocumentSnapshot>.from(snapshot.data?.docs ?? []);
+            docs.sort((a, b) {
+              final aData = a.data() as Map<String, dynamic>?;
+              final bData = b.data() as Map<String, dynamic>?;
+              final aOrder = aData?['order'] as num?;
+              final bOrder = bData?['order'] as num?;
+              if (aOrder != null && bOrder != null) {
+                return aOrder.compareTo(bOrder);
+              }
+              final aTime = aData?['createdAt'] as Timestamp?;
+              final bTime = bData?['createdAt'] as Timestamp?;
+              if (aTime == null && bTime == null) return 0;
+              if (aTime == null) return 1;
+              if (bTime == null) return -1;
+              return aTime.compareTo(bTime);
+            });
+
+            return Scaffold(
+              appBar: AppBar(
+                title: Text(branchName),
+                backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+                actions: [
+                  if (isAdmin)
+                    IconButton(
+                      icon: const Icon(Icons.playlist_add),
+                      tooltip: 'একসাথে অনেক সদস্য যুক্ত করুন',
+                      onPressed: () => _showBulkImportDialog(context),
+                    ),
+                  if (docs.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.copy_all),
+                      tooltip: 'সব নম্বর কপি করুন',
+                      onPressed: () => _copyAllNumbers(docs, context),
+                    ),
+                  buildAdminLockButton(context),
+                ],
+              ),
+              body: !snapshot.hasData
+                  ? const Center(child: CircularProgressIndicator())
+                  : docs.isEmpty
+                      ? const Center(child: Text('এই শাখায় কোনো ব্যক্তি যুক্ত নেই।'))
+                      : isAdmin
+                          ? ReorderableListView.builder(
+                              buildDefaultDragHandles: false,
+                              itemCount: docs.length,
+                              onReorder: (oldIndex, newIndex) => _onReorder(oldIndex, newIndex, docs),
+                              itemBuilder: (context, index) {
+                                return _buildContactCard(context, docs[index], index, true);
+                              },
+                            )
+                          : ListView.builder(
+                              itemCount: docs.length,
+                              itemBuilder: (context, index) {
+                                return _buildContactCard(context, docs[index], index, false);
+                              },
+                            ),
+              floatingActionButton: isAdmin
+                  ? FloatingActionButton(
+                      onPressed: () => _showContactDialog(context, currentCount: docs.length),
+                      child: const Icon(Icons.person_add),
+                    )
+                  : null,
+            );
+          },
+        );
+      },
+    );
+  }
+}
