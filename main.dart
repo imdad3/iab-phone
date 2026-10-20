@@ -5,30 +5,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// ==========================================
-// ১. সংগঠনের নাম, লোগো ও অ্যাডমিন সেটিংস
-// ==========================================
 const String ORG_NAME = "IAB নারায়ণগঞ্জ মহানগর";
 const String APP_SUBTITLE = "অফিসিয়াল ফোন ডিরেক্টরি";
+const String LOGO_IMAGE_URL = "https://i.postimg.cc/fRb0b52y/FB-IMG-1792434797577.jpg";
+const String APP_ADMIN_PIN = "2486";
 
-// আপনার পোস্টইমেজ (PostImage) থেকে দেওয়া লোগোর লিংক:
-const String LOGO_IMAGE_URL = "https://i.postimg.cc/fRb0b52y/FB-IMG-1792434797577.jpg"; 
-
-// আপনার মাস্টার অ্যাডমিন পাসওয়ার্ড
-const String APP_ADMIN_PIN = "2486"; 
-
-// লগইন করা ইউজারের আইডি ও অ্যাডমিন স্টেট
 String currentUserId = '';
 final ValueNotifier<bool> isAdminNotifier = ValueNotifier<bool>(false);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  
+
   final prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
   currentUserId = prefs.getString('logged_user_id') ?? '';
-  
+
   if (currentUserId.toLowerCase() == "admin") {
     isAdminNotifier.value = true;
   }
@@ -54,7 +46,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// অনুমতি যাচাই করার ফাংশন
 bool canUserAccess(Map<String, dynamic> data, bool isAdmin) {
   if (isAdmin || currentUserId.toLowerCase() == "admin") {
     return true;
@@ -74,7 +65,6 @@ bool canUserAccess(Map<String, dynamic> data, bool isAdmin) {
   return true;
 }
 
-// লোগো উইজেট
 Widget buildAppLogo({double size = 80}) {
   if (LOGO_IMAGE_URL.isNotEmpty && LOGO_IMAGE_URL.toLowerCase().startsWith('http')) {
     return ClipRRect(
@@ -103,7 +93,6 @@ Widget _defaultLogoIcon(double size) {
   );
 }
 
-// ================= ০. লগইন স্ক্রিন =================
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -253,7 +242,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// অ্যাডমিন পিন ডায়ালগ
 void showAdminPinDialog(BuildContext context) {
   final pinController = TextEditingController();
   showDialog(
@@ -292,7 +280,6 @@ void showAdminPinDialog(BuildContext context) {
   );
 }
 
-// হেডারবারের অ্যাডমিন বাটন
 Widget buildAdminLockButton(BuildContext context) {
   return ValueListenableBuilder<bool>(
     valueListenable: isAdminNotifier,
@@ -334,7 +321,6 @@ Widget buildAdminLockButton(BuildContext context) {
   );
 }
 
-// ================= ১. ইউজার ম্যানেজমেন্ট স্ক্রিন =================
 class UserManagementScreen extends StatelessWidget {
   const UserManagementScreen({super.key});
 
@@ -465,7 +451,6 @@ class UserManagementScreen extends StatelessWidget {
   }
 }
 
-// ================= ২. গ্রুপ স্ক্রিন =================
 class GroupListScreen extends StatelessWidget {
   const GroupListScreen({super.key});
 
@@ -560,11 +545,11 @@ class GroupListScreen extends StatelessWidget {
               padding: const EdgeInsets.all(8.0),
               child: buildAppLogo(size: 38),
             ),
-            title: const Column(
+            title: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(ORG_NAME, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text(APP_SUBTITLE, style: TextStyle(fontSize: 11, color: Colors.black54)),
+                Text(ORG_NAME, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(APP_SUBTITLE, style: const TextStyle(fontSize: 11, color: Colors.black54)),
               ],
             ),
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -599,7 +584,7 @@ class GroupListScreen extends StatelessWidget {
             stream: FirebaseFirestore.instance.collection('groups').snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              
+
               final docs = snapshot.data!.docs.where((d) {
                 final data = d.data() as Map<String, dynamic>;
                 return canUserAccess(data, isAdmin);
@@ -689,7 +674,6 @@ class GroupListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৩. শাখা স্ক্রিন =================
 class BranchListScreen extends StatelessWidget {
   final String groupId;
   final String groupName;
@@ -701,7 +685,8 @@ class BranchListScreen extends StatelessWidget {
     String selectedAccess = currentAccess ?? 'public';
     List<String> allowedUsers = List<String>.from(currentAllowed ?? []);
 
-    final userDocs = (await FirebaseFirestore.instance.collection('app_users').get()).docs;
+    final userSnapshot = await FirebaseFirestore.instance.collection('app_users').get();
+    final userDocs = userSnapshot.docs;
 
     if (!context.mounted) return;
 
@@ -750,8 +735,8 @@ class BranchListScreen extends StatelessWidget {
                   else
                     ...userDocs.map((u) {
                       final uData = u.data();
-                      final uId = uData['userId'] ?? '';
-                      final uName = uData['name'] ?? '';
+                      final uId = (uData['userId'] ?? '').toString();
+                      final uName = (uData['name'] ?? '').toString();
                       final isChecked = allowedUsers.contains(uId);
 
                       return CheckboxListTile(
@@ -837,7 +822,7 @@ class BranchListScreen extends StatelessWidget {
             stream: FirebaseFirestore.instance.collection('branches').where('groupId', isEqualTo: groupId).snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              
+
               final docs = snapshot.data!.docs.where((d) {
                 final data = d.data() as Map<String, dynamic>;
                 return canUserAccess(data, isAdmin);
@@ -936,7 +921,6 @@ class BranchListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৪. কন্টাক্ট স্ক্রিন =================
 class ContactListScreen extends StatelessWidget {
   final String groupId;
   final String branchId;
