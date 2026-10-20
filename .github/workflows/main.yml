@@ -28,7 +28,7 @@ jobs:
         run: |
           flutter create --org com.iab --project-name phone iab_phone
           cd iab_phone
-          flutter pub add firebase_core cloud_firestore url_launcher shared_preferences
+          flutter pub add firebase_core cloud_firestore url_launcher shared_preferences file_picker csv
           cp ../main.dart lib/main.dart
           cp ../google-services.json android/app/google-services.json
 
