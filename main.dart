@@ -6,18 +6,24 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ==========================================
-// আপনার পছন্দমতো মাস্টার অ্যাডমিন পাসওয়ার্ড
+// ১. সংগঠনের নাম, লোগো ও অ্যাডমিন সেটিংস
 // ==========================================
+const String ORG_NAME = "IAB নারায়ণগঞ্জ মহানগর";
+const String APP_SUBTITLE = "অফিসিয়াল ফোন ডিরেক্টরি";
+
+// এখানে আপনার লোগোর সরাসরি লিংকটি কোটেশনের (" ") ভেতর পেস্ট করুন:
+const String LOGO_IMAGE_URL ="https://i.postimg.cc/fRb0b52y/FB-IMG-1792434797577.jpg"; 
+
+// আপনার মাস্টার অ্যাডমিন পাসওয়ার্ড
 const String APP_ADMIN_PIN = "2486"; 
 
-// অ্যাডমিন মোড ট্র্যাকার (গ্লোবাল স্টেট)
+// অ্যাডমিন স্টেট
 final ValueNotifier<bool> isAdminNotifier = ValueNotifier<bool>(false);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   
-  // অ্যাপে আগে থেকেই লগইন করা আছে কি না পরীক্ষা করা
   final prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
 
@@ -31,16 +37,47 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'IAB Phone Directory',
+      title: ORG_NAME,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00796B)),
         useMaterial3: true,
       ),
-      // লগইন করা থাকলে সরাসরি গ্রুপ স্ক্রিন, না থাকলে লগইন স্ক্রিন খুলবে
       home: isLoggedIn ? const GroupListScreen() : const LoginScreen(),
     );
   }
+}
+
+// লোগো দেখানোর রিইউজেবল উইজেট
+Widget buildAppLogo({double size = 80}) {
+  if (LOGO_IMAGE_URL.startsWith('http')) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(size / 2),
+      child: Image.network(
+        LOGO_IMAGE_URL,
+        height: size,
+        width: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: size,
+          width: size,
+          decoration: BoxDecoration(
+            color: const Color(0xFF00796B).withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(Icons.account_balance_rounded, size: size * 0.55, color: const Color(0xFF00796B)),
+        ),
+      ),
+    );
+  }
+  return Container(
+    padding: EdgeInsets.all(size * 0.2),
+    decoration: BoxDecoration(
+      color: const Color(0xFF00796B).withOpacity(0.12),
+      shape: BoxShape.circle,
+    ),
+    child: Icon(Icons.account_balance_rounded, size: size * 0.55, color: const Color(0xFF00796B)),
+  );
 }
 
 // ================= ০. লগইন / ভেরিফিকেশন স্ক্রিন =================
@@ -63,7 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (userId.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('ইউজার আইডি এবং পাসওয়ার্ড উভয়ই পূরণ করুন')),
+        const SnackBar(content: Text('ইউজার আইডি এবং পাসওয়ার্ড উভয়ই দিন')),
       );
       return;
     }
@@ -73,12 +110,12 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       bool isValid = false;
 
-      // ১. মাস্টার অ্যাডমিন হিসেবে লগইন (আইডি: admin, পাসওয়ার্ড: 2486)
+      // মাস্টার অ্যাডমিন লগইন (admin / 2486)
       if (userId.toLowerCase() == "admin" && password == APP_ADMIN_PIN) {
         isValid = true;
         isAdminNotifier.value = true;
       } else {
-        // ২. ক্লাউড ডেটাবেজে সংরক্ষিত সাধারণ ইউজারদের সাথে মিলিয়ে দেখা
+        // ফায়ারস্টোর ইউজার যাচাই
         final query = await FirebaseFirestore.instance
             .collection('app_users')
             .where('userId', isEqualTo: userId)
@@ -92,7 +129,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (isValid) {
-        // ফোনে লগইন তথ্য স্থায়ীভাবে সেভ রাখা (যাতে পরবর্তীতে আর পাসওয়ার্ড না চায়)
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('is_logged_in', true);
         await prefs.setString('logged_user_id', userId);
@@ -126,30 +162,29 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28.0),
+          padding: const EdgeInsets.symmetric(horizontal: 26.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00796B).withOpacity(0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.menu_book_rounded, size: 68, color: Color(0xFF00796B)),
-              ),
-              const SizedBox(height: 22),
+              buildAppLogo(size: 90),
+              const SizedBox(height: 18),
               const Text(
-                'IAB Phone Directory',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
+                ORG_NAME,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF00796B)),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                APP_SUBTITLE,
+                style: TextStyle(fontSize: 14, color: Colors.blueGrey, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
               const Text(
-                'অ্যাপে প্রবেশ করতে অ্যাডমিনের দেওয়া আইডি ও পাসওয়ার্ড দিন',
+                'অ্যাপে প্রবেশ করতে আপনাকে দেওয়া আইডি ও পাসওয়ার্ড দিন',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 13),
+                style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 28),
               TextField(
                 controller: _userIdCtrl,
                 decoration: const InputDecoration(
@@ -158,12 +193,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               TextField(
                 controller: _passwordCtrl,
                 obscureText: _obscurePin,
                 decoration: InputDecoration(
-                  labelText: 'পাসওয়ার্ড / কোড',
+                  labelText: 'পাসওয়ার্ড / পিন কোড',
                   prefixIcon: const Icon(Icons.lock_outline),
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
@@ -172,10 +207,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 26),
+              const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 48,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00796B),
@@ -277,7 +312,7 @@ Widget buildAdminLockButton(BuildContext context) {
   );
 }
 
-// ================= ১. ইউজার ম্যানেজমেন্ট স্ক্রিন (নতুন ইউজার তৈরি) =================
+// ================= ১. ইউজার ম্যানেজমেন্ট স্ক্রিন =================
 class UserManagementScreen extends StatelessWidget {
   const UserManagementScreen({super.key});
 
@@ -334,7 +369,7 @@ class UserManagementScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('ইউজার বাতিল করবেন?'),
-        content: Text('আপনি কি নিশ্চিত যে "$name"-কে মুছে ফেলতে চান? সে আর এই অ্যাপে লগইন করতে পারবে না।'),
+        content: Text('আপনি কি নিশ্চিত যে "$name"-কে মুছে ফেলতে চান? সে আর এই অ্যাপে ঢুকতে পারবে না।'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('না')),
           ElevatedButton(
@@ -497,7 +532,17 @@ class GroupListScreen extends StatelessWidget {
       builder: (context, isAdmin, child) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('ফোন ডিরেক্টরি'),
+            leading: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: buildAppLogo(size: 38),
+            ),
+            title: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(ORG_NAME, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(APP_SUBTITLE, style: TextStyle(fontSize: 11, color: Colors.black54)),
+              ],
+            ),
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
             actions: [
               buildAdminLockButton(context),
@@ -768,7 +813,7 @@ class BranchListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৪. কন্টাক্ট স্ক্রিন (ড্র্যাগ-অ্যান্ড-ড্রপ সাজানোসহ) =================
+// ================= ৪. কন্টাক্ট স্ক্রিন (কল, এসএমএস, ড্র্যাগ-সাজানো) =================
 class ContactListScreen extends StatelessWidget {
   final String groupId;
   final String branchId;
@@ -955,7 +1000,7 @@ class ContactListScreen extends StatelessWidget {
                     },
                     itemBuilder: (ctx) => [
                       const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, color: Colors.blue), SizedBox(width: 8), Text('এডিট')])),
-                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছে ফেলুন')])),
+                      const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, color: Colors.red), SizedBox(width: 8), Text('মুছুন')])),
                     ],
                   ),
                 ],
