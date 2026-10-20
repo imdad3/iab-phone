@@ -35,16 +35,16 @@ jobs:
           python3 -c '
           import os
 
-          # ১. android/app/build.gradle এ compileSdk ও minSdk নির্দিষ্ট করা
+          # ১. android/app/build.gradle এ compileSdkVersion 34 এবং minSdk 23 নির্দিষ্ট করা
           app_bg = "android/app/build.gradle"
           if os.path.exists(app_bg):
               with open(app_bg, "r") as fl:
                   c = fl.read()
-              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion = 34")
-              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion = 34\n        compileSdk = 34")
-              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion = 23")
-              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion = 23")
-              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion = 34")
+              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion 34")
+              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 34\n        compileSdk 34")
+              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion 23")
+              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion 34")
               with open(app_bg, "w") as fl:
                   fl.write(c)
 
@@ -56,31 +56,21 @@ jobs:
                       with open(p, "r") as fl:
                           c = fl.read()
                       c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
-                      c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion = 23")
-                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion = 23")
+                      c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion 23")
                       c = c.replace("minSdk = 21", "minSdk = 23")
-                      c = c.replace("minSdkVersion 21", "minSdkVersion = 23")
+                      c = c.replace("minSdkVersion 21", "minSdkVersion 23")
                       with open(p, "w") as fl:
                           fl.write(c)
 
-          # ৩. রুট build.gradle ফাইলে subprojects ফিক্স যুক্ত করা
+          # ৩. রুট android/build.gradle এ ext ভেরিয়েবল যুক্ত করা
           root_bg = "android/build.gradle"
           if os.path.exists(root_bg):
               with open(root_bg, "r") as fl:
                   c = fl.read()
-              patch = (
-                  "\nsubprojects {\n"
-                  "    afterEvaluate { project ->\n"
-                  "        if (project.hasProperty(\"android\")) {\n"
-                  "            project.android {\n"
-                  "                compileSdkVersion 34\n"
-                  "            }\n"
-                  "        }\n"
-                  "    }\n"
-                  "}\n"
-              )
-              if "compileSdkVersion 34" not in c:
-                  c += patch
+              ext_patch = "allprojects {\n    ext.compileSdkVersion = 34\n    ext.minSdkVersion = 23\n    ext.targetSdkVersion = 34\n}\n\n"
+              if "ext.compileSdkVersion" not in c:
+                  c = ext_patch + c
                   with open(root_bg, "w") as fl:
                       fl.write(c)
 
