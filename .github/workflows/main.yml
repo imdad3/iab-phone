@@ -35,16 +35,16 @@ jobs:
           python3 -c '
           import os
 
-          # ১. android/app/build.gradle এ compileSdk (৩৪) এবং minSdk (২৩) নির্দিষ্ট করা
+          # ১. android/app/build.gradle এ compileSdk ও minSdk নির্দিষ্ট করা
           app_bg = "android/app/build.gradle"
           if os.path.exists(app_bg):
               with open(app_bg, "r") as fl:
                   c = fl.read()
-              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion 34")
-              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 34\n        compileSdk 34")
-              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion 23")
-              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
-              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion 34")
+              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion = 34")
+              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion = 34\n        compileSdk = 34")
+              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion = 23")
+              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion = 23")
+              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion = 34")
               with open(app_bg, "w") as fl:
                   fl.write(c)
 
@@ -56,38 +56,31 @@ jobs:
                       with open(p, "r") as fl:
                           c = fl.read()
                       c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
-                      c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
-                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion 23")
+                      c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion = 23")
+                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion = 23")
                       c = c.replace("minSdk = 21", "minSdk = 23")
-                      c = c.replace("minSdkVersion 21", "minSdkVersion 23")
+                      c = c.replace("minSdkVersion 21", "minSdkVersion = 23")
                       with open(p, "w") as fl:
                           fl.write(c)
 
-          # ৩. রুট build.gradle ফাইলে subprojects ফিক্স যুক্ত করা (যাতে file_picker সহ সব প্লাগইন compileSdkVersion 34 পায়)
+          # ৩. রুট build.gradle ফাইলে subprojects ফিক্স যুক্ত করা
           root_bg = "android/build.gradle"
           if os.path.exists(root_bg):
               with open(root_bg, "r") as fl:
                   c = fl.read()
-              subproject_patch = """
-allprojects {
-    ext.compileSdkVersion = 34
-    ext.targetSdkVersion = 34
-    ext.minSdkVersion = 23
-}
-
-subprojects {
-    afterEvaluate { project ->
-        if (project.hasProperty("android")) {
-            project.android {
-                compileSdkVersion 34
-                buildToolsVersion "34.0.0"
-            }
-        }
-    }
-}
-"""
-              if "buildToolsVersion \"34.0.0\"" not in c:
-                  c += "\n" + subproject_patch
+              patch = (
+                  "\nsubprojects {\n"
+                  "    afterEvaluate { project ->\n"
+                  "        if (project.hasProperty(\"android\")) {\n"
+                  "            project.android {\n"
+                  "                compileSdkVersion 34\n"
+                  "            }\n"
+                  "        }\n"
+                  "    }\n"
+                  "}\n"
+              )
+              if "compileSdkVersion 34" not in c:
+                  c += patch
                   with open(root_bg, "w") as fl:
                       fl.write(c)
 
@@ -121,24 +114,22 @@ subprojects {
           if os.path.exists(mf):
               with open(mf, "r") as fl:
                   c = fl.read()
-              
               c = c.replace("android:label=\"phone\"", "android:label=\"IAB NC\"")
-
-              queries = """
-                  <queries>
-                      <intent>
-                          <action android:name="android.intent.action.VIEW" />
-                          <data android:scheme="tel" />
-                      </intent>
-                      <intent>
-                          <action android:name="android.intent.action.VIEW" />
-                          <data android:scheme="sms" />
-                      </intent>
-                      <package android:name="com.whatsapp" />
-                  </queries>
-              """
+              queries = (
+                  "\n    <queries>\n"
+                  "        <intent>\n"
+                  "            <action android:name=\"android.intent.action.VIEW\" />\n"
+                  "            <data android:scheme=\"tel\" />\n"
+                  "        </intent>\n"
+                  "        <intent>\n"
+                  "            <action android:name=\"android.intent.action.VIEW\" />\n"
+                  "            <data android:scheme=\"sms\" />\n"
+                  "        </intent>\n"
+                  "        <package android:name=\"com.whatsapp\" />\n"
+                  "    </queries>\n"
+              )
               if "<queries>" not in c:
-                  c = c.replace("</manifest>", queries + "\n</manifest>")
+                  c = c.replace("</manifest>", queries + "</manifest>")
               with open(mf, "w") as fl:
                   fl.write(c)
           '
