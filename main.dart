@@ -11,7 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 const String ORG_NAME = "IAB নারায়ণগঞ্জ মহানগর";
 const String APP_SUBTITLE = "অফিসিয়াল ফোন ডিরেক্টরি";
 
-// আপনার লোগোর সরাসরি লিংক থাকলে এখানে কোটেশনের মধ্যে বসাবেন:
+// আপনার পোস্টইমেজ (PostImage) থেকে দেওয়া লোগোর লিংক:
 const String LOGO_IMAGE_URL = "https://i.postimg.cc/fRb0b52y/FB-IMG-1792434797577.jpg"; 
 
 // আপনার মাস্টার অ্যাডমিন পাসওয়ার্ড
@@ -29,7 +29,6 @@ void main() async {
   final bool isLoggedIn = prefs.getBool('is_logged_in') ?? false;
   currentUserId = prefs.getString('logged_user_id') ?? '';
   
-  // যদি সরাসরি admin ইউজার হিসেবে সেভ থাকে
   if (currentUserId.toLowerCase() == "admin") {
     isAdminNotifier.value = true;
   }
@@ -57,31 +56,27 @@ class MyApp extends StatelessWidget {
 
 // অনুমতি যাচাই করার ফাংশন
 bool canUserAccess(Map<String, dynamic> data, bool isAdmin) {
-  // ১. মাস্টার অ্যাডমিন সবসময় সবকিছু দেখতে পাবেন
   if (isAdmin || currentUserId.toLowerCase() == "admin") {
     return true;
   }
 
   final String accessType = data['accessType'] ?? 'public';
 
-  // ২. যদি শুধু অ্যাডমিনের জন্য হয়
   if (accessType == 'admin_only') {
     return false;
   }
 
-  // ৩. যদি নির্দিষ্ট কিছু ইউজারের জন্য হয়
   if (accessType == 'custom') {
     final List<dynamic> allowed = data['allowedUsers'] ?? [];
     return allowed.contains(currentUserId);
   }
 
-  // ৪. বাকি সব সবার জন্য উন্মুক্ত (public)
   return true;
 }
 
 // লোগো উইজেট
 Widget buildAppLogo({double size = 80}) {
-  if (LOGO_IMAGE_URL.isNotEmpty && LOGO_IMAGE_URL.startsWith('http')) {
+  if (LOGO_IMAGE_URL.isNotEmpty && LOGO_IMAGE_URL.toLowerCase().startsWith('http')) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(size / 2),
       child: Image.network(
@@ -470,7 +465,7 @@ class UserManagementScreen extends StatelessWidget {
   }
 }
 
-// ================= ২. গ্রুপ স্ক্রিন (গোপনীয়তাসহ) =================
+// ================= ২. গ্রুপ স্ক্রিন =================
 class GroupListScreen extends StatelessWidget {
   const GroupListScreen({super.key});
 
@@ -605,7 +600,6 @@ class GroupListScreen extends StatelessWidget {
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
               
-              // সিকিউরিটি ফিল্টারিং
               final docs = snapshot.data!.docs.where((d) {
                 final data = d.data() as Map<String, dynamic>;
                 return canUserAccess(data, isAdmin);
@@ -648,7 +642,7 @@ class GroupListScreen extends StatelessWidget {
                           if (isSecret && isAdmin)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4), border: Border.Border.all(color: Colors.red.shade200)),
+                              decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.red.shade200)),
                               child: const Text('🔒 শুধু অ্যাডমিন', style: TextStyle(fontSize: 10, color: Colors.red, fontWeight: FontWeight.bold)),
                             ),
                         ],
@@ -695,7 +689,7 @@ class GroupListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৩. শাখা স্ক্রিন (ইউজার ভিত্তিক গোপনীয়তাসহ) =================
+// ================= ৩. শাখা স্ক্রিন =================
 class BranchListScreen extends StatelessWidget {
   final String groupId;
   final String groupName;
@@ -707,7 +701,6 @@ class BranchListScreen extends StatelessWidget {
     String selectedAccess = currentAccess ?? 'public';
     List<String> allowedUsers = List<String>.from(currentAllowed ?? []);
 
-    // সমস্ত রেজিস্ট্রার্ড ইউজারের তালিকা ফায়ারবেস থেকে লোড করা
     final userDocs = (await FirebaseFirestore.instance.collection('app_users').get()).docs;
 
     if (!context.mounted) return;
@@ -845,7 +838,6 @@ class BranchListScreen extends StatelessWidget {
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
               
-              // সিকিউরিটি ফিল্টারিং
               final docs = snapshot.data!.docs.where((d) {
                 final data = d.data() as Map<String, dynamic>;
                 return canUserAccess(data, isAdmin);
@@ -890,7 +882,7 @@ class BranchListScreen extends StatelessWidget {
                           if (isRestricted && isAdmin)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(4), border: Border.Border.all(color: Colors.amber.shade400)),
+                              decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.amber.shade400)),
                               child: Text(
                                 accessType == 'admin_only' ? '🔒 শুধু অ্যাডমিন' : '👥 ${allowed.length} জন ইউজার',
                                 style: TextStyle(fontSize: 10, color: Colors.amber.shade900, fontWeight: FontWeight.bold),
