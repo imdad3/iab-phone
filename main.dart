@@ -1,10 +1,16 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
 
+// ==========================================
+// ১. সংগঠনের নাম, লোগো ও অ্যাডমিন সেটিংস
+// ==========================================
 const String ORG_NAME = "IAB নারায়ণগঞ্জ মহানগর";
 const String APP_SUBTITLE = "অফিসিয়াল ফোন ডিরেক্টরি";
 const String LOGO_IMAGE_URL = "https://i.postimg.cc/fRb0b52y/FB-IMG-1792434797577.jpg";
@@ -93,6 +99,7 @@ Widget _defaultLogoIcon(double size) {
   );
 }
 
+// ================= ০. লগইন স্ক্রিন =================
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -321,6 +328,7 @@ Widget buildAdminLockButton(BuildContext context) {
   );
 }
 
+// ================= ১. ইউজার ম্যানেজমেন্ট স্ক্রিন =================
 class UserManagementScreen extends StatelessWidget {
   const UserManagementScreen({super.key});
 
@@ -451,6 +459,7 @@ class UserManagementScreen extends StatelessWidget {
   }
 }
 
+// ================= ২. গ্রুপ স্ক্রিন =================
 class GroupListScreen extends StatelessWidget {
   const GroupListScreen({super.key});
 
@@ -674,6 +683,7 @@ class GroupListScreen extends StatelessWidget {
   }
 }
 
+// ================= ৩. শাখা স্ক্রিন =================
 class BranchListScreen extends StatelessWidget {
   final String groupId;
   final String groupName;
@@ -921,6 +931,7 @@ class BranchListScreen extends StatelessWidget {
   }
 }
 
+// ================= ৪. কন্টাক্ট স্ক্রিন (CSV ইমপোর্ট সুবিধাসহ) =================
 class ContactListScreen extends StatelessWidget {
   final String groupId;
   final String branchId;
@@ -969,6 +980,137 @@ class ContactListScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('${numbers.length}টি নম্বর একসাথে কপি করা হয়েছে!')),
     );
+  }
+
+  // ================= CSV থেকে কন্টাক্ট ইমপোর্ট করার ফাংশন =================
+  Future<void> _importContactsFromCSV(BuildContext context) async {
+    // নির্দেশনা ডায়ালগ
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('CSV ফাইল ইমপোর্ট করুন'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('ফাইলটিতে ৩টি কলাম থাকতে হবে:', style: TextStyle(fontWeight: FontWeight.bold)),
+            SizedBox(height: 8),
+            Text('১. প্রথম কলাম: নাম'),
+            Text('২. দ্বিতীয় কলাম: মোবাইল নম্বর'),
+            Text('৩. তৃতীয় কলাম: পদবী / ঠিকানা'),
+            SizedBox(height: 12),
+            Text('(এক্সেল থেকে ফাইলটি Save as CSV (UTF-8) দিয়ে সেভ করে নিন)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('বাতিল')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ফাইল বাছুন'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        withData: true,
+      );
+
+      if (result == null || result.files.single.bytes == null) return;
+
+      final bytes = result.files.single.bytes!;
+      String csvString = utf8.decode(bytes, allowMalformed: true);
+
+      // UTF-8 BOM চিহ্ন থাকলে তা বাদ দেওয়া
+      if (csvString.startsWith('\uFEFF')) {
+        csvString = csvString.substring(1);
+      }
+
+      List<List<dynamic>> rows = const CsvToListConverter(shouldParseNumbers: false).convert(csvString);
+
+      if (rows.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('ফাইলের মধ্যে কোনো তথ্য পাওয়া যায়নি!')),
+          );
+        }
+        return;
+      }
+
+      // হেডার রো শনাক্ত করে বাদ দেওয়া
+      int startIndex = 0;
+      final firstRow = rows.first;
+      if (firstRow.isNotEmpty) {
+        final firstCell = firstRow[0].toString().toLowerCase();
+        if (firstCell.contains('নাম') || firstCell.contains('name')) {
+          startIndex = 1;
+        }
+      }
+
+      int currentTotal = (await FirebaseFirestore.instance
+              .collection('contacts')
+              .where('branchId', isEqualTo: branchId)
+              .get())
+          .docs
+          .length;
+
+      int addedCount = 0;
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      int batchCount = 0;
+
+      for (int i = startIndex; i < rows.length; i++) {
+        final row = rows[i];
+        if (row.isEmpty) continue;
+
+        final name = row.isNotEmpty ? row[0].toString().trim() : '';
+        final phone = row.length > 1 ? row[1].toString().trim() : '';
+        final address = row.length > 2 ? row[2].toString().trim() : '';
+
+        if (name.isEmpty && phone.isEmpty) continue;
+
+        final docRef = FirebaseFirestore.instance.collection('contacts').doc();
+        batch.set(docRef, {
+          'groupId': groupId,
+          'branchId': branchId,
+          'name': name,
+          'phone': phone,
+          'address': address,
+          'order': currentTotal + addedCount,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        addedCount++;
+        batchCount++;
+
+        // ফায়ারবেস ব্যাচ সাইজ সীমা (৪০০-এ পৌঁছালে কমিট করা)
+        if (batchCount >= 400) {
+          await batch.commit();
+          batch = FirebaseFirestore.instance.batch();
+          batchCount = 0;
+        }
+      }
+
+      if (batchCount > 0) {
+        await batch.commit();
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('সফলভাবে $addedCount জন সদস্যের তথ্য যুক্ত হয়েছে!')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ফাইল পড়তে ত্রুটি হয়েছে: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _onReorder(int oldIndex, int newIndex, List<QueryDocumentSnapshot> docs) async {
@@ -1166,6 +1308,12 @@ class ContactListScreen extends StatelessWidget {
                 title: Text(branchName),
                 backgroundColor: Theme.of(context).colorScheme.inversePrimary,
                 actions: [
+                  if (isAdmin)
+                    IconButton(
+                      icon: const Icon(Icons.upload_file),
+                      tooltip: 'CSV থেকে ফাইল আপলোড করুন',
+                      onPressed: () => _importContactsFromCSV(context),
+                    ),
                   if (docs.isNotEmpty)
                     IconButton(
                       icon: const Icon(Icons.copy_all),
