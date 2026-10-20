@@ -32,10 +32,85 @@ jobs:
           cp ../main.dart lib/main.dart
           cp ../google-services.json android/app/google-services.json
 
+          # ১. অ্যাপ আইকন তৈরির জন্য ভেক্টর কনভার্টার ইনস্টল করা
+          sudo apt-get update -y && sudo apt-get install -y librsvg2-bin
+
+          # ২. আইএবি ফোন ডিরেক্টরির নিজস্ব অফিসিয়াল লোগো ফাইল তৈরি করা
+          cat << 'EOF' > iab_logo.svg
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+            <defs>
+              <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#005A4D"/>
+                <stop offset="100%" stop-color="#002922"/>
+              </linearGradient>
+              <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#FFE082"/>
+                <stop offset="50%" stop-color="#FFCA28"/>
+                <stop offset="100%" stop-color="#FFA000"/>
+              </linearGradient>
+            </defs>
+
+            <!-- ব্যাকগ্রাউন্ড স্কোয়ারক্যাল ও গোল্ডেন বর্ডার -->
+            <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)"/>
+            <rect x="22" y="22" width="468" height="468" rx="102" fill="none" stroke="url(#gold)" stroke-width="4" stroke-opacity="0.45"/>
+
+            <!-- ফোন ডিরেক্টরি বুক শ্যাডো ও ব্যাক পার্ট -->
+            <rect x="120" y="105" width="272" height="320" rx="26" fill="#001814" opacity="0.45"/>
+            <rect x="120" y="96" width="272" height="320" rx="24" fill="#FFFFFF"/>
+            <rect x="120" y="96" width="50" height="320" rx="24" fill="url(#gold)"/>
+            <rect x="145" y="96" width="25" height="320" fill="url(#gold)"/>
+
+            <!-- ডায়েরির স্পাইনের রিংস -->
+            <circle cx="145" cy="146" r="6" fill="#004D40"/>
+            <circle cx="145" cy="196" r="6" fill="#004D40"/>
+            <circle cx="145" cy="246" r="6" fill="#004D40"/>
+            <circle cx="145" cy="296" r="6" fill="#004D40"/>
+            <circle cx="145" cy="346" r="6" fill="#004D40"/>
+
+            <!-- সেন্ট্রাল ব্যাজ সার্কেল -->
+            <circle cx="282" cy="216" r="64" fill="#004D40"/>
+            <circle cx="282" cy="216" r="58" fill="none" stroke="url(#gold)" stroke-width="3"/>
+
+            <!-- ফোন ডিরেক্টরি কল আইকন -->
+            <path d="M 264 186 C 262 186 257 190 257 195 C 257 212 271 226 288 226 C 293 226 297 221 297 219 L 293 210 C 292 208 289 207 287 208 L 282 211 C 277 208 275 206 272 201 L 275 196 C 276 194 275 191 273 190 Z" fill="#FFFFFF"/>
+
+            <!-- হাতপাখা প্রতীক -->
+            <line x1="282" y1="250" x2="282" y2="268" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/>
+            <path d="M 258 250 C 258 228 306 228 306 250 Z" fill="none" stroke="url(#gold)" stroke-width="3.5" stroke-linecap="round"/>
+            <path d="M 265 250 C 265 237 299 237 299 250 Z" fill="none" stroke="url(#gold)" stroke-width="2"/>
+
+            <!-- ডিরেক্টরি লাইনস -->
+            <rect x="195" y="296" width="174" height="10" rx="5" fill="#E0E0E0"/>
+            <rect x="215" y="316" width="134" height="8" rx="4" fill="#EEEEEE"/>
+
+            <!-- IAB টেক্সট -->
+            <text x="282" y="374" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-size="34" font-weight="900" fill="#004D40" letter-spacing="3">IAB</text>
+          </svg>
+          EOF
+
+          # ৩. সব মাপের অ্যান্ড্রয়েড স্ক্রিনের জন্য অ্যাপ আইকন তৈরি ও প্রতিস্থাপন
+          rsvg-convert -w 48 -h 48 iab_logo.svg -o android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+          cp android/app/src/main/res/mipmap-mdpi/ic_launcher.png android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+
+          rsvg-convert -w 72 -h 72 iab_logo.svg -o android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+          cp android/app/src/main/res/mipmap-hdpi/ic_launcher.png android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+
+          rsvg-convert -w 96 -h 96 iab_logo.svg -o android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+          cp android/app/src/main/res/mipmap-xhdpi/ic_launcher.png android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+
+          rsvg-convert -w 144 -h 144 iab_logo.svg -o android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+          cp android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+
+          rsvg-convert -w 192 -h 192 iab_logo.svg -o android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          cp android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+
+          # অ্যান্ড্রয়েডের ডিফল্ট ফ্ল্যাট আইকন এক্সএমএল সরানো যাতে সরাসরি নতুন লোগোটি দৃশ্যমান হয়
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+
           python3 -c '
           import os
 
-          # ১. minSdk ২৩ এবং compileSdk ৩৪ সেট করা
+          # ৪. minSdk ২৩ এবং compileSdk ৩৪ সেট করা
           app_bg = "android/app/build.gradle"
           if os.path.exists(app_bg):
               with open(app_bg, "r") as fl:
@@ -47,7 +122,7 @@ jobs:
               with open(app_bg, "w") as fl:
                   fl.write(c)
 
-          # ২. গুগল সার্ভিস প্লাগইন যুক্ত করা
+          # ৫. গুগল সার্ভিস প্লাগইন যুক্ত করা
           for sf in ["android/settings.gradle", "android/settings.gradle.kts"]:
               if os.path.exists(sf):
                   with open(sf, "r") as fl:
@@ -72,7 +147,7 @@ jobs:
                   with open(bf, "w") as fl:
                       fl.write(c)
 
-          # ৩. অ্যাপের নাম ও প্রয়োজনীয় পারমিশন যুক্ত করা
+          # ৬. অ্যাপের নাম ও প্রয়োজনীয় পারমিশন যুক্ত করা
           mf = "android/app/src/main/AndroidManifest.xml"
           if os.path.exists(mf):
               with open(mf, "r") as fl:
