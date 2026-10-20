@@ -35,20 +35,43 @@ jobs:
           python3 -c '
           import os
 
-          # ১. android/app/build.gradle এ compileSdkVersion 34 এবং minSdk 23 নির্দিষ্ট করা
+          # ১. ডাউনলোড হওয়া file_picker সহ সব প্লাগইনের build.gradle এ compileSdkVersion 34 বসিয়ে দেওয়া
+          pub_cache = os.path.expanduser("~/.pub-cache")
+          if os.path.exists(pub_cache):
+              for root, dirs, files in os.walk(pub_cache):
+                  for f in files:
+                      if f == "build.gradle":
+                          p = os.path.join(root, f)
+                          try:
+                              with open(p, "r", encoding="utf-8", errors="ignore") as fl:
+                                  c = fl.read()
+                              modified = False
+                              if "file_picker" in root:
+                                  c = c.replace("android {", "android {\n    compileSdkVersion 34\n    compileSdk 34")
+                                  modified = True
+                              elif "compileSdkVersion" not in c and "android {" in c:
+                                  c = c.replace("android {", "android {\n    compileSdkVersion 34")
+                                  modified = True
+                              if modified:
+                                  with open(p, "w", encoding="utf-8") as fl:
+                                      fl.write(c)
+                          except Exception:
+                              pass
+
+          # ২. android/app/build.gradle এ compileSdk ও minSdk নির্দিষ্ট করা
           app_bg = "android/app/build.gradle"
           if os.path.exists(app_bg):
               with open(app_bg, "r") as fl:
                   c = fl.read()
-              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion 34")
-              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 34\n        compileSdk 34")
-              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion 23")
-              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
-              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion 34")
+              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion = 34")
+              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion = 34\n        compileSdk = 34")
+              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion = 23")
+              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion = 23")
+              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion = 34")
               with open(app_bg, "w") as fl:
                   fl.write(c)
 
-          # ২. সব গ্র্যাডল ফাইলে minSdk জোরপূর্বক ২৩ করা
+          # ৩. সব গ্র্যাডল ফাইলে minSdk জোরপূর্বক ২৩ করা
           for root, dirs, files in os.walk("android"):
               for f in files:
                   if f in ["build.gradle", "build.gradle.kts"]:
@@ -63,7 +86,7 @@ jobs:
                       with open(p, "w") as fl:
                           fl.write(c)
 
-          # ৩. রুট android/build.gradle এ ext ভেরিয়েবল যুক্ত করা
+          # ৪. রুট android/build.gradle এ ext ভেরিয়েবল যুক্ত করা
           root_bg = "android/build.gradle"
           if os.path.exists(root_bg):
               with open(root_bg, "r") as fl:
@@ -74,7 +97,7 @@ jobs:
                   with open(root_bg, "w") as fl:
                       fl.write(c)
 
-          # ৪. গুগল সার্ভিস প্লাগইন যুক্ত করা
+          # ৫. গুগল সার্ভিস প্লাগইন যুক্ত করা
           for sf in ["android/settings.gradle", "android/settings.gradle.kts"]:
               if os.path.exists(sf):
                   with open(sf, "r") as fl:
@@ -99,25 +122,13 @@ jobs:
                   with open(bf, "w") as fl:
                       fl.write(c)
 
-          # ৫. অ্যাপের নাম ও প্রয়োজনীয় পারমিশন যুক্ত করা
+          # ৬. অ্যাপের নাম ও প্রয়োজনীয় পারমিশন যুক্ত করা
           mf = "android/app/src/main/AndroidManifest.xml"
           if os.path.exists(mf):
               with open(mf, "r") as fl:
                   c = fl.read()
               c = c.replace("android:label=\"phone\"", "android:label=\"IAB NC\"")
-              queries = (
-                  "\n    <queries>\n"
-                  "        <intent>\n"
-                  "            <action android:name=\"android.intent.action.VIEW\" />\n"
-                  "            <data android:scheme=\"tel\" />\n"
-                  "        </intent>\n"
-                  "        <intent>\n"
-                  "            <action android:name=\"android.intent.action.VIEW\" />\n"
-                  "            <data android:scheme=\"sms\" />\n"
-                  "        </intent>\n"
-                  "        <package android:name=\"com.whatsapp\" />\n"
-                  "    </queries>\n"
-              )
+              queries = "\n    <queries>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <data android:scheme=\"tel\" />\n        </intent>\n        <intent>\n            <action android:name=\"android.intent.action.VIEW\" />\n            <data android:scheme=\"sms\" />\n        </intent>\n        <package android:name=\"com.whatsapp\" />\n    </queries>\n"
               if "<queries>" not in c:
                   c = c.replace("</manifest>", queries + "</manifest>")
               with open(mf, "w") as fl:
