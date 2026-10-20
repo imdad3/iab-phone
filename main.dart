@@ -350,7 +350,7 @@ class UserManagementScreen extends StatelessWidget {
           ElevatedButton(
             onPressed: () {
               if (nameCtrl.text.isNotEmpty && userCtrl.text.isNotEmpty && passCtrl.text.isNotEmpty) {
-                final data = {
+                final Map<String, dynamic> data = {
                   'name': nameCtrl.text.trim(),
                   'userId': userCtrl.text.trim(),
                   'password': passCtrl.text.trim(),
@@ -492,7 +492,7 @@ class GroupListScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 if (groupController.text.trim().isNotEmpty) {
-                  final data = {
+                  final Map<String, dynamic> data = {
                     'name': groupController.text.trim(),
                     'accessType': selectedAccess,
                   };
@@ -545,11 +545,11 @@ class GroupListScreen extends StatelessWidget {
               padding: const EdgeInsets.all(8.0),
               child: buildAppLogo(size: 38),
             ),
-            title: Column(
+            title: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(ORG_NAME, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text(APP_SUBTITLE, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                Text(ORG_NAME, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(APP_SUBTITLE, style: TextStyle(fontSize: 11, color: Colors.black54)),
               ],
             ),
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
@@ -763,7 +763,7 @@ class BranchListScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () {
                 if (branchController.text.trim().isNotEmpty) {
-                  final data = {
+                  final Map<String, dynamic> data = {
                     'groupId': groupId,
                     'name': branchController.text.trim(),
                     'accessType': selectedAccess,
