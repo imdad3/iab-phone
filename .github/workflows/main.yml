@@ -35,69 +35,56 @@ jobs:
           python3 -c '
           import os
 
-          # ১. ডাউনলোড হওয়া file_picker সহ সব প্লাগইনের build.gradle এ compileSdkVersion 34 বসিয়ে দেওয়া
+          # ১. file_picker সহ ক্যাশের সব প্লাগইন থেকে flutter.compileSdkVersion ইত্যাদি টেক্সট সম্পূর্ণ রিপ্লেস করা
           pub_cache = os.path.expanduser("~/.pub-cache")
           if os.path.exists(pub_cache):
               for root, dirs, files in os.walk(pub_cache):
                   for f in files:
-                      if f == "build.gradle":
+                      if f.endswith((".gradle", ".gradle.kts")):
                           p = os.path.join(root, f)
                           try:
                               with open(p, "r", encoding="utf-8", errors="ignore") as fl:
                                   c = fl.read()
-                              modified = False
-                              if "file_picker" in root:
-                                  c = c.replace("android {", "android {\n    compileSdkVersion 34\n    compileSdk 34")
-                                  modified = True
-                              elif "compileSdkVersion" not in c and "android {" in c:
-                                  c = c.replace("android {", "android {\n    compileSdkVersion 34")
-                                  modified = True
-                              if modified:
+                              orig = c
+                              c = c.replace("flutter.compileSdkVersion", "34")
+                              c = c.replace("flutter.minSdkVersion", "23")
+                              c = c.replace("flutter.targetSdkVersion", "34")
+                              if c != orig:
                                   with open(p, "w", encoding="utf-8") as fl:
                                       fl.write(c)
                           except Exception:
                               pass
 
-          # ২. android/app/build.gradle এ compileSdk ও minSdk নির্দিষ্ট করা
+          # ২. মূল অ্যাপ ও প্রজেক্টের সব গ্র্যাডল ফাইল ফিক্স করা
+          for root, dirs, files in os.walk("android"):
+              for f in files:
+                  if f.endswith((".gradle", ".gradle.kts")):
+                      p = os.path.join(root, f)
+                      try:
+                          with open(p, "r", encoding="utf-8", errors="ignore") as fl:
+                              c = fl.read()
+                          orig = c
+                          c = c.replace("flutter.compileSdkVersion", "34")
+                          c = c.replace("flutter.minSdkVersion", "23")
+                          c = c.replace("flutter.targetSdkVersion", "34")
+                          c = c.replace("minSdk = 21", "minSdk = 23")
+                          c = c.replace("minSdkVersion 21", "minSdkVersion 23")
+                          if c != orig:
+                              with open(p, "w", encoding="utf-8") as fl:
+                                  fl.write(c)
+                      except Exception:
+                          pass
+
+          # ৩. android/app/build.gradle এ নিশ্চিতভাবে compileSdk ও minSdk দেওয়া
           app_bg = "android/app/build.gradle"
           if os.path.exists(app_bg):
               with open(app_bg, "r") as fl:
                   c = fl.read()
-              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion = 34")
-              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion = 34\n        compileSdk = 34")
-              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion = 23")
-              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion = 23")
-              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion = 34")
+              c = c.replace("compileSdk = 34", "compileSdk = 34\n        compileSdkVersion = 34")
               with open(app_bg, "w") as fl:
                   fl.write(c)
 
-          # ৩. সব গ্র্যাডল ফাইলে minSdk জোরপূর্বক ২৩ করা
-          for root, dirs, files in os.walk("android"):
-              for f in files:
-                  if f in ["build.gradle", "build.gradle.kts"]:
-                      p = os.path.join(root, f)
-                      with open(p, "r") as fl:
-                          c = fl.read()
-                      c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
-                      c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
-                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion 23")
-                      c = c.replace("minSdk = 21", "minSdk = 23")
-                      c = c.replace("minSdkVersion 21", "minSdkVersion 23")
-                      with open(p, "w") as fl:
-                          fl.write(c)
-
-          # ৪. রুট android/build.gradle এ ext ভেরিয়েবল যুক্ত করা
-          root_bg = "android/build.gradle"
-          if os.path.exists(root_bg):
-              with open(root_bg, "r") as fl:
-                  c = fl.read()
-              ext_patch = "allprojects {\n    ext.compileSdkVersion = 34\n    ext.minSdkVersion = 23\n    ext.targetSdkVersion = 34\n}\n\n"
-              if "ext.compileSdkVersion" not in c:
-                  c = ext_patch + c
-                  with open(root_bg, "w") as fl:
-                      fl.write(c)
-
-          # ৫. গুগল সার্ভিস প্লাগইন যুক্ত করা
+          # ৪. গুগল সার্ভিস প্লাগইন যুক্ত করা
           for sf in ["android/settings.gradle", "android/settings.gradle.kts"]:
               if os.path.exists(sf):
                   with open(sf, "r") as fl:
@@ -122,7 +109,7 @@ jobs:
                   with open(bf, "w") as fl:
                       fl.write(c)
 
-          # ৬. অ্যাপের নাম ও প্রয়োজনীয় পারমিশন যুক্ত করা
+          # ৫. অ্যাপের নাম ও প্রয়োজনীয় পারমিশন যুক্ত করা
           mf = "android/app/src/main/AndroidManifest.xml"
           if os.path.exists(mf):
               with open(mf, "r") as fl:
