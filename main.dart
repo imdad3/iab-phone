@@ -1,12 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:csv/csv.dart';
 
 // ==========================================
 // ১. সংগঠনের নাম, লোগো ও অ্যাডমিন সেটিংস
@@ -931,7 +928,7 @@ class BranchListScreen extends StatelessWidget {
   }
 }
 
-// ================= ৪. কন্টাক্ট স্ক্রিন (CSV ইমপোর্ট সুবিধাসহ) =================
+// ================= ৪. কন্টাক্ট স্ক্রিন (স্মার্ট বাল্ক ইমপোর্টসহ) =================
 class ContactListScreen extends StatelessWidget {
   final String groupId;
   final String branchId;
@@ -982,135 +979,135 @@ class ContactListScreen extends StatelessWidget {
     );
   }
 
-  // ================= CSV থেকে কন্টাক্ট ইমপোর্ট করার ফাংশন =================
-  Future<void> _importContactsFromCSV(BuildContext context) async {
-    // নির্দেশনা ডায়ালগ
-    final bool? confirm = await showDialog<bool>(
+  // ================= এক্সেল ও শিট থেকে স্মার্ট বাল্ক ইমপোর্ট ডায়ালগ =================
+  void _showBulkImportDialog(BuildContext context) {
+    final textCtrl = TextEditingController();
+
+    showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('CSV ফাইল ইমপোর্ট করুন'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: const Row(
           children: [
-            Text('ফাইলটিতে ৩টি কলাম থাকতে হবে:', style: TextStyle(fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
-            Text('১. প্রথম কলাম: নাম'),
-            Text('২. দ্বিতীয় কলাম: মোবাইল নম্বর'),
-            Text('৩. তৃতীয় কলাম: পদবী / ঠিকানা'),
-            SizedBox(height: 12),
-            Text('(এক্সেল থেকে ফাইলটি Save as CSV (UTF-8) দিয়ে সেভ করে নিন)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            Icon(Icons.playlist_add_check, color: Color(0xFF00796B)),
+            SizedBox(width: 8),
+            Text('একসাথে অনেক তথ্য যোগ'),
           ],
         ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'এক্সেল, গুগল শিট বা টেক্সট ফাইল থেকে নাম, মোবাইল ও পদবী কপি করে নিচের বক্সে পেস্ট করুন:',
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
+                child: const Text(
+                  'নমুনা ফরম্যাট (প্রতি লাইনে একজন):\nমোঃ রহিম, 01711000000, সভাপতি\nমোঃ করিম, 01811000000, সম্পাদক',
+                  style: TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: textCtrl,
+                maxLines: 8,
+                decoration: const InputDecoration(
+                  hintText: 'এখানে পেস্ট করুন...',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('বাতিল')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('বাতিল')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('ফাইল বাছুন'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00796B),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              final rawText = textCtrl.text.trim();
+              if (rawText.isEmpty) return;
+
+              Navigator.pop(ctx);
+
+              final lines = rawText.split(RegExp(r'\r?\n'));
+              int currentTotal = (await FirebaseFirestore.instance
+                      .collection('contacts')
+                      .where('branchId', isEqualTo: branchId)
+                      .get())
+                  .docs
+                  .length;
+
+              WriteBatch batch = FirebaseFirestore.instance.batch();
+              int addedCount = 0;
+              int batchCount = 0;
+
+              for (var line in lines) {
+                line = line.trim();
+                if (line.isEmpty) continue;
+
+                List<String> parts = [];
+                if (line.contains('\t')) {
+                  parts = line.split('\t');
+                } else if (line.contains(',')) {
+                  parts = line.split(',');
+                } else if (line.contains(';')) {
+                  parts = line.split(';');
+                } else if (line.contains('|')) {
+                  parts = line.split('|');
+                } else {
+                  parts = [line];
+                }
+
+                final name = parts.isNotEmpty ? parts[0].trim() : '';
+                final phone = parts.length > 1 ? parts[1].trim() : '';
+                final address = parts.length > 2 ? parts.sublist(2).join(', ').trim() : '';
+
+                if (name.toLowerCase() == 'নাম' || name.toLowerCase() == 'name') continue;
+                if (name.isEmpty && phone.isEmpty) continue;
+
+                final docRef = FirebaseFirestore.instance.collection('contacts').doc();
+                batch.set(docRef, {
+                  'groupId': groupId,
+                  'branchId': branchId,
+                  'name': name,
+                  'phone': phone,
+                  'address': address,
+                  'order': currentTotal + addedCount,
+                  'createdAt': FieldValue.serverTimestamp(),
+                });
+
+                addedCount++;
+                batchCount++;
+
+                if (batchCount >= 400) {
+                  await batch.commit();
+                  batch = FirebaseFirestore.instance.batch();
+                  batchCount = 0;
+                }
+              }
+
+              if (batchCount > 0) {
+                await batch.commit();
+              }
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('সফলভাবে $addedCount জন সদস্যের তথ্য যুক্ত হয়েছে!')),
+                );
+              }
+            },
+            child: const Text('ইমপোর্ট করুন'),
           ),
         ],
       ),
     );
-
-    if (confirm != true) return;
-
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['csv'],
-        withData: true,
-      );
-
-      if (result == null || result.files.single.bytes == null) return;
-
-      final bytes = result.files.single.bytes!;
-      String csvString = utf8.decode(bytes, allowMalformed: true);
-
-      // UTF-8 BOM চিহ্ন থাকলে তা বাদ দেওয়া
-      if (csvString.startsWith('\uFEFF')) {
-        csvString = csvString.substring(1);
-      }
-
-      List<List<dynamic>> rows = const CsvToListConverter(shouldParseNumbers: false).convert(csvString);
-
-      if (rows.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('ফাইলের মধ্যে কোনো তথ্য পাওয়া যায়নি!')),
-          );
-        }
-        return;
-      }
-
-      // হেডার রো শনাক্ত করে বাদ দেওয়া
-      int startIndex = 0;
-      final firstRow = rows.first;
-      if (firstRow.isNotEmpty) {
-        final firstCell = firstRow[0].toString().toLowerCase();
-        if (firstCell.contains('নাম') || firstCell.contains('name')) {
-          startIndex = 1;
-        }
-      }
-
-      int currentTotal = (await FirebaseFirestore.instance
-              .collection('contacts')
-              .where('branchId', isEqualTo: branchId)
-              .get())
-          .docs
-          .length;
-
-      int addedCount = 0;
-      WriteBatch batch = FirebaseFirestore.instance.batch();
-      int batchCount = 0;
-
-      for (int i = startIndex; i < rows.length; i++) {
-        final row = rows[i];
-        if (row.isEmpty) continue;
-
-        final name = row.isNotEmpty ? row[0].toString().trim() : '';
-        final phone = row.length > 1 ? row[1].toString().trim() : '';
-        final address = row.length > 2 ? row[2].toString().trim() : '';
-
-        if (name.isEmpty && phone.isEmpty) continue;
-
-        final docRef = FirebaseFirestore.instance.collection('contacts').doc();
-        batch.set(docRef, {
-          'groupId': groupId,
-          'branchId': branchId,
-          'name': name,
-          'phone': phone,
-          'address': address,
-          'order': currentTotal + addedCount,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-
-        addedCount++;
-        batchCount++;
-
-        // ফায়ারবেস ব্যাচ সাইজ সীমা (৪০০-এ পৌঁছালে কমিট করা)
-        if (batchCount >= 400) {
-          await batch.commit();
-          batch = FirebaseFirestore.instance.batch();
-          batchCount = 0;
-        }
-      }
-
-      if (batchCount > 0) {
-        await batch.commit();
-      }
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('সফলভাবে $addedCount জন সদস্যের তথ্য যুক্ত হয়েছে!')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('ফাইল পড়তে ত্রুটি হয়েছে: $e')),
-        );
-      }
-    }
   }
 
   Future<void> _onReorder(int oldIndex, int newIndex, List<QueryDocumentSnapshot> docs) async {
@@ -1310,9 +1307,9 @@ class ContactListScreen extends StatelessWidget {
                 actions: [
                   if (isAdmin)
                     IconButton(
-                      icon: const Icon(Icons.upload_file),
-                      tooltip: 'CSV থেকে ফাইল আপলোড করুন',
-                      onPressed: () => _importContactsFromCSV(context),
+                      icon: const Icon(Icons.playlist_add),
+                      tooltip: 'একসাথে অনেক সদস্য যুক্ত করুন',
+                      onPressed: () => _showBulkImportDialog(context),
                     ),
                   if (docs.isNotEmpty)
                     IconButton(
