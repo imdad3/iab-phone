@@ -35,7 +35,20 @@ jobs:
           python3 -c '
           import os
 
-          # ১. সব গ্র্যাডল ফাইলে minSdk জোরপূর্বক ২৩ করা
+          # ১. android/app/build.gradle এ compileSdk (৩৪) এবং minSdk (২৩) নির্দিষ্ট করা
+          app_bg = "android/app/build.gradle"
+          if os.path.exists(app_bg):
+              with open(app_bg, "r") as fl:
+                  c = fl.read()
+              c = c.replace("compileSdk = flutter.compileSdkVersion", "compileSdk = 34\n        compileSdkVersion 34")
+              c = c.replace("compileSdkVersion flutter.compileSdkVersion", "compileSdkVersion 34\n        compileSdk 34")
+              c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23\n        minSdkVersion 23")
+              c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
+              c = c.replace("targetSdk = flutter.targetSdkVersion", "targetSdk = 34\n        targetSdkVersion 34")
+              with open(app_bg, "w") as fl:
+                  fl.write(c)
+
+          # ২. সব গ্র্যাডল ফাইলে minSdk জোরপূর্বক ২৩ করা
           for root, dirs, files in os.walk("android"):
               for f in files:
                   if f in ["build.gradle", "build.gradle.kts"]:
@@ -44,13 +57,41 @@ jobs:
                           c = fl.read()
                       c = c.replace("minSdk = flutter.minSdkVersion", "minSdk = 23")
                       c = c.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 23")
-                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion = 23")
+                      c = c.replace("minSdkVersion = flutter.minSdkVersion", "minSdkVersion 23")
                       c = c.replace("minSdk = 21", "minSdk = 23")
                       c = c.replace("minSdkVersion 21", "minSdkVersion 23")
                       with open(p, "w") as fl:
                           fl.write(c)
 
-          # ২. গুগল সার্ভিস প্লাগইন যুক্ত করা
+          # ৩. রুট build.gradle ফাইলে subprojects ফিক্স যুক্ত করা (যাতে file_picker সহ সব প্লাগইন compileSdkVersion 34 পায়)
+          root_bg = "android/build.gradle"
+          if os.path.exists(root_bg):
+              with open(root_bg, "r") as fl:
+                  c = fl.read()
+              subproject_patch = """
+allprojects {
+    ext.compileSdkVersion = 34
+    ext.targetSdkVersion = 34
+    ext.minSdkVersion = 23
+}
+
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty("android")) {
+            project.android {
+                compileSdkVersion 34
+                buildToolsVersion "34.0.0"
+            }
+        }
+    }
+}
+"""
+              if "buildToolsVersion \"34.0.0\"" not in c:
+                  c += "\n" + subproject_patch
+                  with open(root_bg, "w") as fl:
+                      fl.write(c)
+
+          # ৪. গুগল সার্ভিস প্লাগইন যুক্ত করা
           for sf in ["android/settings.gradle", "android/settings.gradle.kts"]:
               if os.path.exists(sf):
                   with open(sf, "r") as fl:
@@ -75,13 +116,12 @@ jobs:
                   with open(bf, "w") as fl:
                       fl.write(c)
 
-          # ৩. অ্যাপের নাম পরিবর্তন এবং পারমিশন যুক্ত করা
+          # ৫. অ্যাপের নাম ও প্রয়োজনীয় পারমিশন যুক্ত করা
           mf = "android/app/src/main/AndroidManifest.xml"
           if os.path.exists(mf):
               with open(mf, "r") as fl:
                   c = fl.read()
               
-              # অ্যাপের নতুন নাম সেট করা (এখানে আপনার পছন্দমতো নাম দিতে পারেন)
               c = c.replace("android:label=\"phone\"", "android:label=\"IAB NC\"")
 
               queries = """
@@ -92,10 +132,10 @@ jobs:
                       </intent>
                       <intent>
                           <action android:name="android.intent.action.VIEW" />
-                      <data android:scheme="sms" />
-                  </intent>
-                  <package android:name="com.whatsapp" />
-              </queries>
+                          <data android:scheme="sms" />
+                      </intent>
+                      <package android:name="com.whatsapp" />
+                  </queries>
               """
               if "<queries>" not in c:
                   c = c.replace("</manifest>", queries + "\n</manifest>")
